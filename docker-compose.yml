@@ -1,0 +1,165 @@
+services:
+  db:
+    image: postgis/postgis:16-3.4
+    environment:
+      POSTGRES_DB: ${POSTGRES_DB}
+      POSTGRES_USER: ${POSTGRES_USER}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+    ports:
+      - "5432:5432"
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+      # pg_dump 일일 백업은 추후 단계에서 추가(spec 9-4)
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER} -d ${POSTGRES_DB}"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+  redis:
+    image: redis:7-alpine
+    ports:
+      - "6379:6379"
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+  api:
+    build:
+      context: .
+      dockerfile: docker/images/django/Dockerfile
+    command: gunicorn config.wsgi:application --bind 0.0.0.0:8000
+    env_file: .env
+    environment:
+      POSTGRES_HOST: db
+      REDIS_URL: redis://redis:6379
+      # CDSE S3(eodata) 접근용 GDAL 환경변수(6단계 결정 사항 5) — 지금은 boto3 download_file로만
+      # 받고 있어 당장 쓰이진 않지만, 나중에 rasterio가 /vsis3/로 직접 읽을 때를 대비해 맞춰 둔다.
+      AWS_S3_ENDPOINT: eodata.dataspace.copernicus.eu
+      AWS_HTTPS: "YES"
+      AWS_VIRTUAL_HOSTING: "FALSE"
+    ports:
+      - "8000:8000"
+    volumes:
+      - ./backend:/app/backend
+      - ./data:/app/data:ro  # load_buildings/load_regions 관리 명령이 data/raw/*를 읽는다
+      - ./data/satellite_scenes:/app/data/satellite_scenes  # 장면별 COG(90일 보관, 결과 COG와 다름)
+      - ./docker/data/cog:/app/docker/data/cog  # run_season_chain 관리 명령이 여기 쓴다(7단계)
+      - ./docker/data/crime_tiles:/app/docker/data/crime_tiles  # 범죄주의구간 WMS 타일 캐시(9단계)
+    depends_on:
+      db:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8000/api/health"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+
+  worker-io:
+    build:
+      context: .
+      dockerfile: docker/images/django/Dockerfile
+    command: celery -A config worker -Q io -n worker-io@%h --loglevel=info
+    env_file: .env
+    environment:
+      POSTGRES_HOST: db
+      REDIS_URL: redis://redis:6379
+      AWS_S3_ENDPOINT: eodata.dataspace.copernicus.eu
+      AWS_HTTPS: "YES"
+      AWS_VIRTUAL_HOSTING: "FALSE"
+    volumes:
+      - ./backend:/app/backend
+      - ./data/satellite_scenes:/app/data/satellite_scenes
+      - ./docker/data/crime_tiles:/app/docker/data/crime_tiles  # safety_sync가 끝나면 여기를 비운다
+    depends_on:
+      db:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+
+  worker-cpu:
+    build:
+      context: .
+      dockerfile: docker/images/django/Dockerfile
+    command: celery -A config worker -Q cpu -n worker-cpu@%h --loglevel=info
+    env_file: .env
+    environment:
+      POSTGRES_HOST: db
+      REDIS_URL: redis://redis:6379
+      AWS_S3_ENDPOINT: eodata.dataspace.copernicus.eu
+      AWS_HTTPS: "YES"
+      AWS_VIRTUAL_HOSTING: "FALSE"
+    volumes:
+      - ./backend:/app/backend
+      - ./data/satellite_scenes:/app/data/satellite_scenes
+      - ./docker/data/cog:/app/docker/data/cog  # 계절 합성 결과 COG(영구) — TiTiler와 같은 디렉터리를 쓴다
+    depends_on:
+      db:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+
+  worker-gpu:
+    build:
+      context: .
+      dockerfile: docker/images/django/Dockerfile
+    # 리포트 생성 큐. vLLM을 호출만 하므로 이 워커 자체는 GPU가 필요 없다(spec 9-4).
+    command: celery -A config worker -Q gpu -n worker-gpu@%h --loglevel=info
+    env_file: .env
+    environment:
+      POSTGRES_HOST: db
+      REDIS_URL: redis://redis:6379
+    volumes:
+      - ./backend:/app/backend
+    depends_on:
+      db:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+
+  beat:
+    build:
+      context: .
+      dockerfile: docker/images/django/Dockerfile
+    # Celery Beat는 단일 인스턴스만 실행한다(spec 9-4).
+    command: celery -A config beat --loglevel=info --scheduler django_celery_beat.schedulers:DatabaseScheduler
+    env_file: .env
+    environment:
+      POSTGRES_HOST: db
+      REDIS_URL: redis://redis:6379
+    volumes:
+      - ./backend:/app/backend
+    depends_on:
+      db:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+
+  titiler:
+    image: ghcr.io/developmentseed/titiler:0.18.6
+    ports:
+      - "8001:8000"
+    volumes:
+      - ./docker/data/cog:/data/cog:ro
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8000/healthz"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+
+  vllm:
+    image: vllm/vllm-openai:latest
+    command: --model openai/gpt-oss-20b
+    ports:
+      - "8002:8000"
+    volumes:
+      - vllm-cache:/root/.cache/huggingface
+    profiles: ["llm"]  # 기본 `docker compose up`에는 포함되지 않음
+
+volumes:
+  pgdata:
+  vllm-cache:

@@ -1,0 +1,92 @@
+[
+  {
+    "LGD_NO": "1",
+    "LGD_NM": "1등급",
+    "IMAGE": "#ffffb2",
+    "WARN": "경찰청의 요청으로 원데이터를 표시하지 않고 가공(도로 클리핑, 등급)정보를 제공하고 있습니다. 등급이 높은 지역이 현재 위험하다는 의미는 아닙니다.",
+    "NAME": "범죄주의구간(전체)",
+    "LAYER": "A2SM_CRMNLHSPOT_TOT",
+    "STYLE": "A2SM_CrmnlHspot_Tot_Tot"
+  },
+  {
+    "LGD_NO": "2",
+    "LGD_NM": "2등급",
+    "IMAGE": "#fee88b",
+    "WARN": "경찰청의 요청으로 원데이터를 표시하지 않고 가공(도로 클리핑, 등급)정보를 제공하고 있습니다. 등급이 높은 지역이 현재 위험하다는 의미는 아닙니다.",
+    "NAME": "범죄주의구간(전체)",
+    "LAYER": "A2SM_CRMNLHSPOT_TOT",
+    "STYLE": "A2SM_CrmnlHspot_Tot_Tot"
+  },
+  {
+    "LGD_NO": "3",
+    "LGD_NM": "3등급",
+    "IMAGE": "#fed165",
+    "WARN": "경찰청의 요청으로 원데이터를 표시하지 않고 가공(도로 클리핑, 등급)정보를 제공하고 있습니다. 등급이 높은 지역이 현재 위험하다는 의미는 아닙니다.",
+    "NAME": "범죄주의구간(전체)",
+    "LAYER": "A2SM_CRMNLHSPOT_TOT",
+    "STYLE": "A2SM_CrmnlHspot_Tot_Tot"
+  },
+  {
+    "LGD_NO": "4",
+    "LGD_NM": "4등급",
+    "IMAGE": "#fdb751",
+    "WARN": "경찰청의 요청으로 원데이터를 표시하지 않고 가공(도로 클리핑, 등급)정보를 제공하고 있습니다. 등급이 높은 지역이 현재 위험하다는 의미는 아닙니다.",
+    "NAME": "범죄주의구간(전체)",
+    "LAYER": "A2SM_CRMNLHSPOT_TOT",
+    "STYLE": "A2SM_CrmnlHspot_Tot_Tot"
+  },
+  {
+    "LGD_NO": "5",
+    "LGD_NM": "5등급",
+    "IMAGE": "#fd9b43",
+    "WARN": "경찰청의 요청으로 원데이터를 표시하지 않고 가공(도로 클리핑, 등급)정보를 제공하고 있습니다. 등급이 높은 지역이 현재 위험하다는 의미는 아닙니다.",
+    "NAME": "범죄주의구간(전체)",
+    "LAYER": "A2SM_CRMNLHSPOT_TOT",
+    "STYLE": "A2SM_CrmnlHspot_Tot_Tot"
+  },
+  {
+    "LGD_NO": "6",
+    "LGD_NM": "6등급",
+    "IMAGE": "#fa7a35",
+    "WARN": "경찰청의 요청으로 원데이터를 표시하지 않고 가공(도로 클리핑, 등급)정보를 제공하고 있습니다. 등급이 높은 지역이 현재 위험하다는 의미는 아닙니다.",
+    "NAME": "범죄주의구간(전체)",
+    "LAYER": "A2SM_CRMNLHSPOT_TOT",
+    "STYLE": "A2SM_CrmnlHspot_Tot_Tot"
+  },
+  {
+    "LGD_NO": "7",
+    "LGD_NM": "7등급",
+    "IMAGE": "#f45629",
+    "WARN": "경찰청의 요청으로 원데이터를 표시하지 않고 가공(도로 클리핑, 등급)정보를 제공하고 있습니다. 등급이 높은 지역이 현재 위험하다는 의미는 아닙니다.",
+    "NAME": "범죄주의구간(전체)",
+    "LAYER": "A2SM_CRMNLHSPOT_TOT",
+    "STYLE": "A2SM_CrmnlHspot_Tot_Tot"
+  },
+  {
+    "LGD_NO": "8",
+    "LGD_NM": "8등급",
+    "IMAGE": "#ea3420",
+    "WARN": "경찰청의 요청으로 원데이터를 표시하지 않고 가공(도로 클리핑, 등급)정보를 제공하고 있습니다. 등급이 높은 지역이 현재 위험하다는 의미는 아닙니다.",
+    "NAME": "범죄주의구간(전체)",
+    "LAYER": "A2SM_CRMNLHSPOT_TOT",
+    "STYLE": "A2SM_CrmnlHspot_Tot_Tot"
+  },
+  {
+    "LGD_NO": "9",
+    "LGD_NM": "9등급",
+    "IMAGE": "#d31a23",
+    "WARN": "경찰청의 요청으로 원데이터를 표시하지 않고 가공(도로 클리핑, 등급)정보를 제공하고 있습니다. 등급이 높은 지역이 현재 위험하다는 의미는 아닙니다.",
+    "NAME": "범죄주의구간(전체)",
+    "LAYER": "A2SM_CRMNLHSPOT_TOT",
+    "STYLE": "A2SM_CrmnlHspot_Tot_Tot"
+  },
+  {
+    "LGD_NO": "10",
+    "LGD_NM": "10등급",
+    "IMAGE": "#bd0026",
+    "WARN": "경찰청의 요청으로 원데이터를 표시하지 않고 가공(도로 클리핑, 등급)정보를 제공하고 있습니다. 등급이 높은 지역이 현재 위험하다는 의미는 아닙니다.",
+    "NAME": "범죄주의구간(전체)",
+    "LAYER": "A2SM_CRMNLHSPOT_TOT",
+    "STYLE": "A2SM_CrmnlHspot_Tot_Tot"
+  }
+]

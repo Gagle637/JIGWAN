@@ -1,0 +1,349 @@
+{
+  "DEMO000000000000001": {
+    "insight": {
+      "status": "ready",
+      "radius_m": 500,
+      "as_of": {
+        "satellite_period": "2026-06-01/2026-08-31",
+        "trade_synced_at": "2026-10-16T04:12:00+09:00",
+        "register_synced_at": null,
+        "crime_data_period": "2023-07/2024-06"
+      },
+      "green": {
+        "ratio_pct": 23.4,
+        "region_avg_pct": 18.1,
+        "diff_pp": 5.3,
+        "coverage_pct": 92.0,
+        "series": [
+          {"year": 2023, "season": "summer", "ratio_pct": 20.1, "coverage_pct": 88.0},
+          {"year": 2024, "season": "summer", "ratio_pct": 21.6, "coverage_pct": 90.0},
+          {"year": 2025, "season": "summer", "ratio_pct": 22.8, "coverage_pct": 91.0},
+          {"year": 2026, "season": "summer", "ratio_pct": 23.4, "coverage_pct": 92.0}
+        ]
+      },
+      "change": {
+        "total_area_m2": 0.0,
+        "areas": [],
+        "tiles": {"after": "/tiles/{z}/{x}/{y}?url=demo", "before": {"1y": "/tiles/{z}/{x}/{y}?url=demo"}, "default_compare": "1y"}
+      },
+      "spec": {
+        "use": "공동주택",
+        "land_area_m2": 15230.5,
+        "total_floor_area_m2": 48211.2,
+        "bcr_pct": 18.2,
+        "far_pct": 249.8,
+        "approval_date": "2009-11-20",
+        "age_years": 16
+      },
+      "trades": {
+        "months": 24,
+        "count": 87,
+        "monthly": [
+          {"ym": "2026-08", "deal_type": "sale", "median_price_per_m2": 798.1, "count": 4},
+          {"ym": "2026-09", "deal_type": "sale", "median_price_per_m2": 812.3, "count": 5}
+        ]
+      },
+      "crime": {"max_grad": 4, "near_grad": 3, "flagged_length_m": 210.0, "high_share_pct": 0.0},
+      "missing": []
+    },
+    "reports": {
+      "template": {
+        "summary_3lines": [
+          "반경 500m 녹지율은 23.4%로 지역 평균 18.1%보다 5.3%p 높습니다.",
+          "최근 1년 범죄 발생 밀도는 반경 내 최고 4등급으로 낮은 편입니다.",
+          "최근 24개월간 반경 내 매매 87건, 최근 달 ㎡당 중앙값은 812.3만원입니다."
+        ],
+        "living_view": "이 건물은 2009-11-20에 사용승인돼 16년이 지났습니다. 반경 500m 녹지율은 23.4%로 지역 평균(18.1%)보다 5.3%p 높고, 지난 4개 계절 동안 꾸준히 높아지는 추세입니다. 최근 1년 범죄 발생 밀도는 반경 내 최고 4등급, 건물 50m 이내 최고 3등급으로 비교적 낮습니다.",
+        "investment_view": "최근 24개월간 반경 500m 매매 거래는 87건이며, 가장 최근 달(2026-09) ㎡당 중앙값은 812.3만원으로 전달(798.1만원)보다 소폭 올랐습니다. 반경 내 개발 징후는 관측되지 않았습니다.",
+        "risks": [],
+        "evidence": [
+          {"section": "summary", "index": 0, "keys": ["green.ratio_pct", "green.region_avg_pct", "green.diff_pp"]},
+          {"section": "summary", "index": 1, "keys": ["crime.max_grad"]},
+          {"section": "summary", "index": 2, "keys": ["trades.count", "trades.monthly"]},
+          {"section": "living", "index": 0, "keys": ["spec.approval_date", "spec.age_years", "green.ratio_pct", "green.region_avg_pct", "crime.max_grad", "crime.near_grad"]},
+          {"section": "investment", "index": 0, "keys": ["trades.count", "trades.monthly", "change.total_area_m2"]}
+        ]
+      },
+      "custom": {
+        "title": "실거주 관점 요약",
+        "answer": "반경 500m 녹지율은 23.4%로 지역 평균(18.1%)보다 5.3%p 높고, 최근 1년 범죄 발생 밀도도 반경 내 최고 4등급으로 비교적 낮은 편입니다. 반경 내 개발 징후는 관측되지 않아 당분간 주변 환경이 크게 바뀔 가능성은 낮아 보입니다.",
+        "evidence": [
+          {"section": "녹지", "index": 0, "keys": ["green.ratio_pct", "green.region_avg_pct"]},
+          {"section": "안전", "index": 0, "keys": ["crime.max_grad"]}
+        ],
+        "limitations": []
+      }
+    }
+  },
+  "DEMO000000000000002": {
+    "insight": {
+      "status": "ready",
+      "radius_m": 500,
+      "as_of": {
+        "satellite_period": "2026-06-01/2026-08-31",
+        "trade_synced_at": "2026-10-16T04:12:00+09:00",
+        "register_synced_at": null,
+        "crime_data_period": "2023-07/2024-06"
+      },
+      "green": {
+        "ratio_pct": 14.2,
+        "region_avg_pct": 18.1,
+        "diff_pp": -3.9,
+        "coverage_pct": 95.0,
+        "series": [
+          {"year": 2023, "season": "summer", "ratio_pct": 19.0, "coverage_pct": 93.0},
+          {"year": 2024, "season": "summer", "ratio_pct": 17.5, "coverage_pct": 94.0},
+          {"year": 2025, "season": "summer", "ratio_pct": 15.8, "coverage_pct": 94.0},
+          {"year": 2026, "season": "summer", "ratio_pct": 14.2, "coverage_pct": 95.0}
+        ]
+      },
+      "change": {
+        "total_area_m2": 41200.0,
+        "areas": [
+          {"id": 551, "area_m2": 18300.0, "distance_m": 320.0, "period": "1y", "geometry": {"type": "Polygon", "coordinates": []}},
+          {"id": 552, "area_m2": 9800.0, "distance_m": 410.0, "period": "2y", "geometry": {"type": "Polygon", "coordinates": []}}
+        ],
+        "tiles": {"after": "/tiles/{z}/{x}/{y}?url=demo", "before": {"1y": "/tiles/{z}/{x}/{y}?url=demo", "2y": "/tiles/{z}/{x}/{y}?url=demo"}, "default_compare": "1y"}
+      },
+      "spec": {
+        "use": "오피스텔",
+        "land_area_m2": 4820.0,
+        "total_floor_area_m2": 21900.0,
+        "bcr_pct": 58.3,
+        "far_pct": 452.0,
+        "approval_date": "2015-04-02",
+        "age_years": 11
+      },
+      "trades": {
+        "months": 24,
+        "count": 42,
+        "monthly": [
+          {"ym": "2026-09", "deal_type": "sale", "median_price_per_m2": 655.0, "count": 2}
+        ]
+      },
+      "crime": {"max_grad": 6, "near_grad": 4, "flagged_length_m": 480.0, "high_share_pct": 0.0},
+      "missing": []
+    },
+    "reports": {
+      "template": {
+        "summary_3lines": [
+          "반경 500m 녹지율은 14.2%로 지역 평균 18.1%보다 3.9%p 낮습니다.",
+          "최근 1년 사이 반경 내에서 약 41200.0㎡ 규모의 개발 징후가 2건 관측됐습니다.",
+          "최근 24개월간 반경 내 매매 42건, 최근 달 ㎡당 중앙값은 655.0만원입니다."
+        ],
+        "living_view": "이 건물은 2015-04-02에 사용승인돼 11년이 지났습니다. 반경 500m 녹지율은 14.2%로 지역 평균(18.1%)보다 3.9%p 낮고, 지난 4개 계절 동안 계속 낮아지는 추세입니다. 최근 1년 범죄 발생 밀도는 반경 내 최고 6등급, 건물 50m 이내 최고 4등급입니다.",
+        "investment_view": "최근 24개월간 반경 500m 매매 거래는 42건이며, 최근 달(2026-09) ㎡당 중앙값은 655.0만원입니다. 같은 반경에서 약 41200.0㎡ 규모의 개발 징후가 1·2년 전 비교 모두에서 관측돼, 주변 여건이 계속 바뀌고 있는 것으로 보입니다.",
+        "risks": [
+          "반경 내 개발 징후 면적이 넓어(총 41200.0㎡) 주변 환경이 계속 바뀔 수 있습니다.",
+          "녹지율이 지난 4개 계절 동안 계속 낮아지는 추세입니다."
+        ],
+        "evidence": [
+          {"section": "summary", "index": 0, "keys": ["green.ratio_pct", "green.region_avg_pct", "green.diff_pp"]},
+          {"section": "summary", "index": 1, "keys": ["change.total_area_m2", "change.areas"]},
+          {"section": "summary", "index": 2, "keys": ["trades.count", "trades.monthly"]},
+          {"section": "living", "index": 0, "keys": ["spec.approval_date", "spec.age_years", "green.ratio_pct", "green.region_avg_pct", "crime.max_grad", "crime.near_grad"]},
+          {"section": "investment", "index": 0, "keys": ["trades.count", "trades.monthly", "change.total_area_m2"]},
+          {"section": "risks", "index": 0, "keys": ["change.total_area_m2"]},
+          {"section": "risks", "index": 1, "keys": ["green.series"]}
+        ]
+      },
+      "custom": {
+        "title": "개발 징후·녹지 추세 중심 요약",
+        "answer": "반경 500m 녹지율은 14.2%로 지역 평균보다 3.9%p 낮고 지난 4개 계절 동안 계속 낮아지는 추세입니다. 같은 반경에서 약 41200.0㎡ 규모의 개발 징후가 1년 전·2년 전 비교에서 모두 관측돼, 주변 환경이 계속 바뀌고 있는 것으로 보입니다.",
+        "evidence": [
+          {"section": "녹지", "index": 0, "keys": ["green.ratio_pct", "green.region_avg_pct", "green.series"]},
+          {"section": "개발 징후", "index": 0, "keys": ["change.total_area_m2", "change.areas"]}
+        ],
+        "limitations": []
+      }
+    }
+  },
+  "DEMO000000000000003": {
+    "insight": {
+      "status": "ready",
+      "radius_m": 500,
+      "as_of": {
+        "satellite_period": "2026-06-01/2026-08-31",
+        "trade_synced_at": "2026-10-16T04:12:00+09:00",
+        "register_synced_at": null,
+        "crime_data_period": "2023-07/2024-06"
+      },
+      "green": {
+        "ratio_pct": 19.0,
+        "region_avg_pct": 18.1,
+        "diff_pp": 0.9,
+        "coverage_pct": 90.0,
+        "series": [
+          {"year": 2026, "season": "summer", "ratio_pct": 19.0, "coverage_pct": 90.0}
+        ]
+      },
+      "change": {
+        "total_area_m2": 0.0,
+        "areas": [],
+        "tiles": {"after": "/tiles/{z}/{x}/{y}?url=demo", "before": {}, "default_compare": null}
+      },
+      "spec": {
+        "use": "연립주택",
+        "land_area_m2": 980.0,
+        "total_floor_area_m2": 1860.0,
+        "bcr_pct": 44.1,
+        "far_pct": 189.5,
+        "approval_date": "2001-06-15",
+        "age_years": 25
+      },
+      "trades": {"months": 24, "count": 3, "monthly": [{"ym": "2026-07", "deal_type": "sale", "median_price_per_m2": 410.5, "count": 1}]},
+      "crime": {"max_grad": 9, "near_grad": 8, "flagged_length_m": 820.0, "high_share_pct": 62.0},
+      "missing": []
+    },
+    "reports": {
+      "template": {
+        "summary_3lines": [
+          "반경 500m 녹지율은 19.0%로 지역 평균 18.1%와 비슷합니다.",
+          "최근 1년 범죄 발생 밀도는 반경 내 최고 9등급으로 높은 편이며, 고등급 비중이 62.0%입니다.",
+          "최근 24개월간 반경 내 매매는 3건으로 많지 않습니다."
+        ],
+        "living_view": "이 건물은 2001-06-15에 사용승인돼 25년이 지났습니다. 반경 500m 녹지율은 19.0%로 지역 평균과 비슷한 수준입니다. 최근 1년 범죄 발생 밀도는 반경 내 최고 9등급, 건물 50m 이내 최고 8등급이며, 주의구간 도로 길이 820.0m 중 고등급 비중이 62.0%로 높은 편입니다. 이 등급은 과거 발생 밀도를 나타낼 뿐 현재 상태를 평가하는 지표가 아닙니다.",
+        "investment_view": "최근 24개월간 반경 500m 매매 거래는 3건으로 많지 않아 시세 추세를 단정하기 어렵습니다. 가장 최근 거래(2026-07) ㎡당 금액은 410.5만원입니다.",
+        "risks": [
+          "반경 내 주의구간 도로의 고등급 비중이 62.0%로 높은 편입니다."
+        ],
+        "evidence": [
+          {"section": "summary", "index": 0, "keys": ["green.ratio_pct", "green.region_avg_pct"]},
+          {"section": "summary", "index": 1, "keys": ["crime.max_grad", "crime.high_share_pct"]},
+          {"section": "summary", "index": 2, "keys": ["trades.count"]},
+          {"section": "living", "index": 0, "keys": ["spec.approval_date", "spec.age_years", "green.ratio_pct", "crime.max_grad", "crime.near_grad", "crime.flagged_length_m", "crime.high_share_pct"]},
+          {"section": "investment", "index": 0, "keys": ["trades.count", "trades.monthly"]},
+          {"section": "risks", "index": 0, "keys": ["crime.high_share_pct"]}
+        ]
+      },
+      "custom": {
+        "title": "안전 지표 중심 요약",
+        "answer": "최근 1년 범죄 발생 밀도는 반경 내 최고 9등급, 건물 50m 이내 최고 8등급이며 주의구간 도로의 고등급 비중이 62.0%로 높은 편입니다. 이 등급은 과거 발생 밀도를 나타낼 뿐 현재 상태를 평가하는 지표가 아니므로, 참고 정보로만 활용하기를 권합니다. 반경 500m 녹지율은 19.0%로 지역 평균과 비슷합니다.",
+        "evidence": [
+          {"section": "안전", "index": 0, "keys": ["crime.max_grad", "crime.near_grad", "crime.high_share_pct"]},
+          {"section": "녹지", "index": 0, "keys": ["green.ratio_pct", "green.region_avg_pct"]}
+        ],
+        "limitations": []
+      }
+    }
+  },
+  "DEMO000000000000004": {
+    "insight": {
+      "status": "partial",
+      "radius_m": 500,
+      "as_of": {
+        "satellite_period": "2026-06-01/2026-08-31",
+        "trade_synced_at": "2026-10-16T04:12:00+09:00",
+        "register_synced_at": null,
+        "crime_data_period": null
+      },
+      "green": {
+        "ratio_pct": 11.0,
+        "region_avg_pct": 18.1,
+        "diff_pp": -7.1,
+        "coverage_pct": 55.0,
+        "series": [{"year": 2026, "season": "summer", "ratio_pct": 11.0, "coverage_pct": 55.0}]
+      },
+      "change": null,
+      "spec": null,
+      "trades": {"months": 24, "count": 0, "monthly": []},
+      "crime": null,
+      "missing": [
+        {"field": "spec", "reason": "no_registry_data"},
+        {"field": "change", "reason": "no_satellite_data"},
+        {"field": "crime", "reason": "no_crime_segment"}
+      ]
+    },
+    "reports": {
+      "template": {
+        "summary_3lines": [
+          "건축물대장 정보가 없어 스펙은 정보 없음입니다.",
+          "반경 500m 녹지율은 11.0%로 지역 평균 18.1%보다 낮습니다.",
+          "최근 24개월간 반경 내 매매 거래가 없어 시세는 정보 없음입니다."
+        ],
+        "living_view": "건축물대장 정보가 없어 사용승인일 등 스펙은 정보 없음입니다. 반경 500m 녹지율은 11.0%로 지역 평균(18.1%)보다 낮습니다. 이 반경은 범죄주의구간이 지정되지 않아 주의구간 미지정입니다.",
+        "investment_view": "최근 24개월간 반경 500m 안에서 매매 거래가 0건으로 정보 없음입니다. 개발 징후 자료도 아직 없어 정보 없음입니다.",
+        "risks": [],
+        "evidence": [
+          {"section": "summary", "index": 0, "keys": ["missing"]},
+          {"section": "summary", "index": 1, "keys": ["green.ratio_pct", "green.region_avg_pct", "green.diff_pp"]},
+          {"section": "summary", "index": 2, "keys": ["trades.count"]},
+          {"section": "living", "index": 0, "keys": ["missing", "green.ratio_pct", "green.region_avg_pct"]},
+          {"section": "investment", "index": 0, "keys": ["trades.count", "missing"]}
+        ]
+      },
+      "custom": {
+        "title": "녹지 중심 요약(일부 정보 없음)",
+        "answer": "반경 500m 녹지율은 11.0%로 지역 평균(18.1%)보다 낮습니다. 건축물대장·개발 징후·범죄주의구간 자료는 아직 없어 정보 없음입니다.",
+        "evidence": [
+          {"section": "녹지", "index": 0, "keys": ["green.ratio_pct", "green.region_avg_pct", "green.diff_pp"]}
+        ],
+        "limitations": [
+          "건축물대장 정보가 제공 데이터에 없어 답할 수 없음",
+          "개발 징후·범죄주의구간 자료가 아직 없어 답할 수 없음"
+        ]
+      }
+    }
+  },
+  "DEMO000000000000005": {
+    "insight": {
+      "status": "pending",
+      "radius_m": 500,
+      "as_of": {
+        "satellite_period": null,
+        "trade_synced_at": "2026-10-16T04:12:00+09:00",
+        "register_synced_at": null,
+        "crime_data_period": "2023-07/2024-06"
+      },
+      "green": null,
+      "change": null,
+      "spec": {
+        "use": "단독주택",
+        "land_area_m2": 220.0,
+        "total_floor_area_m2": 180.0,
+        "bcr_pct": 48.0,
+        "far_pct": 81.8,
+        "approval_date": "1998-03-10",
+        "age_years": 28
+      },
+      "trades": null,
+      "crime": {"max_grad": 3, "near_grad": null, "flagged_length_m": 90.0, "high_share_pct": 0.0},
+      "missing": [
+        {"field": "trades", "reason": "detached_house_district_not_implemented"},
+        {"field": "green", "reason": "no_satellite_data"},
+        {"field": "change", "reason": "no_satellite_data"}
+      ]
+    },
+    "reports": {
+      "template": {
+        "summary_3lines": [
+          "이 건물은 1998-03-10에 사용승인돼 28년이 지났습니다.",
+          "위성 분석 결과가 아직 없어 녹지율·개발 징후는 정보 없음입니다.",
+          "단독주택은 법정동 단위로만 집계돼 이 건물만의 시세는 정보 없음입니다."
+        ],
+        "living_view": "이 건물은 1998-03-10에 사용승인된 단독주택으로 사용승인 후 28년이 지났습니다. 녹지율·개발 징후는 위성 분석 결과가 아직 없어 정보 없음입니다. 최근 1년 범죄 발생 밀도는 반경 내 최고 3등급으로 낮은 편입니다.",
+        "investment_view": "단독주택은 지번이 가려져 건물 단위 시세를 제공하지 않고 법정동 단위로만 집계되며, 이번 응답에는 그 값도 포함돼 있지 않아 정보 없음입니다.",
+        "risks": [],
+        "evidence": [
+          {"section": "summary", "index": 0, "keys": ["spec.approval_date", "spec.age_years"]},
+          {"section": "summary", "index": 1, "keys": ["missing"]},
+          {"section": "summary", "index": 2, "keys": ["missing"]},
+          {"section": "living", "index": 0, "keys": ["spec.approval_date", "spec.age_years", "missing", "crime.max_grad"]},
+          {"section": "investment", "index": 0, "keys": ["missing"]}
+        ]
+      },
+      "custom": {
+        "title": "현재 분석 준비 중",
+        "answer": "이 건물은 1998-03-10에 사용승인된 단독주택입니다. 위성 분석 결과가 아직 없어 녹지율·개발 징후는 정보 없음이며, 단독주택이라 건물 단위 시세도 제공하지 않습니다. 최근 1년 범죄 발생 밀도는 반경 내 최고 3등급입니다.",
+        "evidence": [
+          {"section": "스펙", "index": 0, "keys": ["spec.approval_date", "spec.age_years"]},
+          {"section": "안전", "index": 0, "keys": ["crime.max_grad"]}
+        ],
+        "limitations": [
+          "이 반경의 위성 분석 결과가 아직 카탈로그에 없어 녹지율·개발 징후는 답할 수 없음",
+          "단독주택은 건물 단위 시세를 제공하지 않음"
+        ]
+      }
+    }
+  }
+}

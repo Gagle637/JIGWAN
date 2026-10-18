@@ -20,3 +20,4 @@ shapely==2.0.*
 pystac-client==0.8.*
 pyogrio==0.9.*
 scipy==1.11.*
+pandas<3

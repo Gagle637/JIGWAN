@@ -1,7 +1,7 @@
 import pytest
 from django.core.cache import cache
-from django.test import override_settings
 from rest_framework.test import APIClient
+from rest_framework.throttling import ScopedRateThrottle
 
 from buildings.models import Building
 
@@ -173,7 +173,11 @@ def test_insight_with_registry_data_fills_spec():
 
     body = response.json()
     assert response.status_code == 200
-    assert body["status"] == "partial"
+    # green·change가 둘 다 null(위성 데이터 전혀 없음)이면 status는 partial이 아니라
+    # pending이다(spec 6-2: "해당 범위의 위성 결과가 카탈로그에 없음"). 이 테스트는 위성
+    # 데이터를 아예 안 만들어 두니 pending이 맞다 — 예전(3단계, status 로직 생기기 전)
+    # 작성 당시 그대로 남아 있던 기대값이었다.
+    assert body["status"] == "pending"
     assert body["spec"]["use"] == "단독주택"
     assert body["spec"]["age_years"] is not None
     assert body["green"] is None
@@ -214,25 +218,25 @@ def test_tile_response_has_cache_control_header():
 # ---- Throttling ----
 
 
-def test_search_throttled_after_limit():
+def test_search_throttled_after_limit(monkeypatch):
+    """ScopedRateThrottle(SimpleRateThrottle)의 THROTTLE_RATES는 클래스 바디에서
+    api_settings.DEFAULT_THROTTLE_RATES를 "한 번만" 읽어 굳힌 클래스 속성이라,
+    override_settings(REST_FRAMEWORK=...)로 settings.REST_FRAMEWORK를 바꿔도 이미 임포트된
+    이 클래스 속성은 안 바뀐다(실제 Postgres·실제 DRF로 돌려보니 3번째 요청도 200이 나와
+    걸림, 감사에서 발견). 클래스 속성을 직접 패치해야 한다."""
     _make_building(bjd_name="대전광역시 유성구 신성동", jibun="1-1")
     client = APIClient()
     # 같은 Redis 캐시를 다른 테스트들도 "search" scope로 쓰므로, 이 테스트만의 낮은 한도가
     # 앞선 테스트들의 요청 기록과 섞이지 않도록 먼저 비운다.
     cache.clear()
 
-    with override_settings(
-        REST_FRAMEWORK={
-            "EXCEPTION_HANDLER": "config.exceptions.jigwan_exception_handler",
-            "DEFAULT_AUTHENTICATION_CLASSES": [
-                "rest_framework_simplejwt.authentication.JWTAuthentication",
-            ],
-            "DEFAULT_THROTTLE_RATES": {"search": "2/min", "insight": "60/min"},
-        }
-    ):
-        r1 = client.get("/api/buildings/search", {"q": "신성동"})
-        r2 = client.get("/api/buildings/search", {"q": "신성동"})
-        r3 = client.get("/api/buildings/search", {"q": "신성동"})
+    monkeypatch.setattr(
+        ScopedRateThrottle, "THROTTLE_RATES", {"search": "2/min", "insight": "60/min"}
+    )
+
+    r1 = client.get("/api/buildings/search", {"q": "신성동"})
+    r2 = client.get("/api/buildings/search", {"q": "신성동"})
+    r3 = client.get("/api/buildings/search", {"q": "신성동"})
 
     assert r1.status_code == 200
     assert r2.status_code == 200

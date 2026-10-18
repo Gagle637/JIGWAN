@@ -137,25 +137,24 @@ def run_safety_sync(data_period: str) -> dict:
     is_fresh_run = _seed_base_grid_if_fully_done()
     logger.info("safety_sync 시작: %s", "새 연간 수집" if is_fresh_run else "이전 실행 재개")
 
+    # failed는 실행 "시작 시" 한 번만 pending으로 되돌린다(spec 8-4: "다음 실행에서 다시
+    # 시도"). 루프 안에서 failed를 다시 주워 오면, 계속 실패하는 셀이 있을 때 매번 pending으로
+    # 되돌려 끝없이 재시도하게 된다(실제 감사에서 무한 루프로 재현됨) — 이번 실행에서 다시
+    # 실패한 셀은 failed로 남겨 두고 다음 호출로 넘긴다.
+    CrimeFetchProgress.objects.filter(status=CrimeFetchProgress.Status.FAILED).update(
+        status=CrimeFetchProgress.Status.PENDING
+    )
+
     done_count = failed_count = 0
     with httpx.Client() as client:
         while True:
             progress = (
-                CrimeFetchProgress.objects.filter(
-                    status__in=[
-                        CrimeFetchProgress.Status.PENDING,
-                        CrimeFetchProgress.Status.FAILED,
-                    ]
-                )
+                CrimeFetchProgress.objects.filter(status=CrimeFetchProgress.Status.PENDING)
                 .order_by("id")
                 .first()
             )
             if progress is None:
                 break
-
-            if progress.status == CrimeFetchProgress.Status.FAILED:
-                progress.status = CrimeFetchProgress.Status.PENDING
-                progress.save(update_fields=["status"])
 
             _process_cell(client, progress, data_period)
             progress.refresh_from_db()

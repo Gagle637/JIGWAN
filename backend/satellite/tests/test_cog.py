@@ -72,7 +72,9 @@ def test_coalesce_prefers_first_nonzero_value():
     a = np.array([0, 5, 0, 7])
     b = np.array([1, 2, 0, 9])
     merged = coalesce(a, b, nodata=0)
-    assert list(merged) == [1, 5, 0, 9]
+    # 첫 유효값(스택 순서상 앞쪽 배열) 우선: pos0(a=0=nodata)->b=1, pos1(a=5)->a=5,
+    # pos2(둘 다 0=nodata)->0, pos3(a=7, 유효)->a=7(뒤에 있는 b=9는 안 씀).
+    assert list(merged) == [1, 5, 0, 7]
 
 
 def test_iter_grid_blocks_covers_grid_without_overlap(settings):

@@ -1,6 +1,9 @@
 # 환경 변수·비밀 값
 .env
 
+# Claude Code 로컬 설정(이 컴퓨터에만 해당하는 권한 설정)
+.claude/settings.local.json
+
 # 원본 데이터(용량 큼, git 제외)
 data/raw/
 

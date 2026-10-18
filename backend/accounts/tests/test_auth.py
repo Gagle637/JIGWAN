@@ -126,10 +126,22 @@ def test_refresh_returns_new_access_token():
 
 
 def test_delete_me_cascades_favorites_and_marks():
+    """중첩 폴더(parent/child 둘 다 PROTECT)까지 있어야 실제 버그(ProtectedError->500)가
+    재현된다 — 폴더 하나뿐이면 Django 삭제 수집기가 우연히 통과시킬 수 있어서 일부러 자식
+    폴더·그 자식에 속한 마크까지 만든다(감사 중 실제 Postgres로 재현된 시나리오)."""
     user = User.objects.create_user(email="withdraw@example.com", password="correct-horse-battery")
-    building = _make_building()
-    folder = FavoriteFolder.objects.create(user=user, name="테스트 폴더")
-    UserBuilding.objects.create(user=user, building=building, is_favorite=True, folder=folder)
+    building1 = _make_building()
+    building2 = _make_building(
+        building_key="WDB2", gis_bldg_id="WDB2", pnu="3011010300101530090"
+    )
+    parent_folder = FavoriteFolder.objects.create(user=user, name="부모 폴더")
+    child_folder = FavoriteFolder.objects.create(user=user, parent=parent_folder, name="자식 폴더")
+    UserBuilding.objects.create(
+        user=user, building=building1, is_favorite=True, folder=parent_folder
+    )
+    UserBuilding.objects.create(
+        user=user, building=building2, is_favorite=True, folder=child_folder
+    )
 
     client = APIClient()
     client.force_authenticate(user=user)
@@ -138,5 +150,5 @@ def test_delete_me_cascades_favorites_and_marks():
 
     assert response.status_code == 204
     assert not User.objects.filter(email="withdraw@example.com").exists()
-    assert not FavoriteFolder.objects.filter(id=folder.id).exists()
-    assert not UserBuilding.objects.filter(building=building).exists()
+    assert not FavoriteFolder.objects.filter(id__in=[parent_folder.id, child_folder.id]).exists()
+    assert not UserBuilding.objects.filter(building__in=[building1, building2]).exists()

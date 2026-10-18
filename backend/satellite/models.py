@@ -30,7 +30,9 @@ class SatelliteScene(models.Model):
 
     class Meta:
         db_table = "satellite_scene"
-        indexes = [models.Index(fields=["mgrs_tile", "sensed_at"])]
+        indexes = [
+            models.Index(fields=["mgrs_tile", "sensed_at"], name="satellite_tile_sensed_idx")
+        ]
 
     def __str__(self):
         return self.scene_id
@@ -69,7 +71,11 @@ class RasterProduct(models.Model):
 
     class Meta:
         db_table = "raster_product"
-        indexes = [models.Index(fields=["product_type", "period_start"])]
+        indexes = [
+            models.Index(
+                fields=["product_type", "period_start"], name="raster_product_type_period_idx"
+            )
+        ]
 
     def __str__(self):
         return f"{self.product_type} {self.year} {self.season} ({self.algo_version})"

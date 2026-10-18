@@ -29,8 +29,9 @@ def test_target_seasons_matches_spec_example():
 def test_target_seasons_handles_january_as_previous_years_winter():
     seasons = backfill_module.target_seasons(date(2026, 1, 15))
 
-    # 1월은 작년 12월에 시작한 겨울에 속하므로(spec 3-3), 그 전 계절은 (작년-1)년 가을이다.
-    assert seasons[-1] == (2025, "winter")
+    # 2026-01-15는 (2025,winter) 안에 있다(겨울=작년 12월~올해 2월, 기록 연도는 작년, spec
+    # 3-3). 그 계절은 아직 안 끝났으니 "완전히 끝난 최신 계절"은 그 전 계절인 (2025,fall)이다.
+    assert seasons[-1] == (2025, "fall")
 
 
 def test_dry_run_list_scenes_creates_listed_rows_and_skips_existing(monkeypatch):

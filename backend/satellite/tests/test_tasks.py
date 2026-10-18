@@ -4,10 +4,19 @@ from satellite.tasks import _season_just_ended, build_season_chain
 
 
 def _all_signatures(canvas):
-    """chain/group 안의 모든 리프 서명을 모은다."""
+    """chain/chord 안의 모든 리프 서명을 모은다.
+
+    Celery는 chain(a, group(b,c), d)를 그대로 두지 않고 chain(a, chord(group(b,c),
+    body=d))로 자동 변환한다 — chord.tasks는 header(b,c), chord.body는 다음 단계(d)다.
+    body를 안 챙기면 catalog_publish가 조용히 검사에서 빠진다(실제 Postgres/Celery로
+    돌려보니 len(sigs)==3이 나와 걸림, 감사에서 발견).
+    """
     sigs = []
     for task in canvas.tasks:
-        if hasattr(task, "tasks"):  # group
+        if hasattr(task, "body") and task.body is not None:  # chord
+            sigs.extend(task.tasks)
+            sigs.append(task.body)
+        elif hasattr(task, "tasks"):  # 순수 group(body 없음)
             sigs.extend(task.tasks)
         else:
             sigs.append(task)

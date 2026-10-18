@@ -117,7 +117,8 @@ def test_status_pending_when_no_satellite_data_at_all():
     reasons = {m["field"]: m["reason"] for m in body["missing"]}
     assert reasons["green"] == "no_satellite_data"
     assert reasons["change"] == "no_satellite_data"
-    assert reasons["crime"] == "not_implemented"
+    # crime은 9단계에서 구현됨 — 범죄주의구간 데이터가 전혀 없을 때의 사유는 no_crime_segment.
+    assert reasons["crime"] == "no_crime_segment"
 
 
 def test_status_partial_when_green_data_exists(tmp_path):

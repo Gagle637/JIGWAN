@@ -28,7 +28,12 @@ def sync_cog_layer(product) -> bool:
         return False
 
     current_period_start = (layer.source_params or {}).get("period_start")
-    new_period_start = product.period_start.isoformat()
+    # product.period_start는 DB에서 막 읽어온 행이면 date, 아직 저장만 하고 재조회 안 한
+    # 메모리 상의 인스턴스(예: RasterProduct.objects.create(period_start="2026-06-01", ...)
+    # 직후)면 그 str 그대로다 — Model.save()가 입력값을 date로 되돌려 바꿔주지 않는다.
+    new_period_start = product.period_start
+    if hasattr(new_period_start, "isoformat"):
+        new_period_start = new_period_start.isoformat()
     if current_period_start and current_period_start >= new_period_start:
         return False
 

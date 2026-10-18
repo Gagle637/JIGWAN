@@ -21,9 +21,14 @@ _RESOLUTION_M = 10
 
 
 def _square_wkt(lon, lat, size=0.001):
+    """(lon, lat)를 중심으로 한 정사각형. 모서리를 (lon,lat)에 두면 건물 중심(重心)이
+    (lon,lat)에서 size/2만큼 동북쪽으로 밀려, 반경 버퍼 중심도 그만큼 어긋난다(이 테스트
+    파일에서 쓰는 margin bbox·코그 경계는 모두 (lon,lat)를 중심으로 깔아서, 실제 PostgreSQL로
+    돌려보니 50% 테스트가 ~45m 어긋나 있었다 — 감사에서 발견)."""
+    half = size / 2
     return (
-        f"POLYGON(({lon} {lat}, {lon + size} {lat}, "
-        f"{lon + size} {lat + size}, {lon} {lat + size}, {lon} {lat}))"
+        f"POLYGON(({lon - half} {lat - half}, {lon + half} {lat - half}, "
+        f"{lon + half} {lat + half}, {lon - half} {lat + half}, {lon - half} {lat - half}))"
     )
 
 
@@ -92,12 +97,22 @@ def _write_all_green(path, left, bottom, right, top):
     _write_tile(path, left, bottom, right, top, array)
 
 
-def _write_mostly_nodata(path, left, bottom, right, top, valid_fraction=0.3):
-    """앞쪽 valid_fraction만 유효(녹지)하고 나머지는 MASK_NODATA — insufficient_data 테스트용."""
+def _write_partial_valid_band(path, left, bottom, right, top, valid_half_width_m):
+    """중심(=건물·반경 중심)에서 좌우로 valid_half_width_m씩, 폭 2*valid_half_width_m인
+    세로띠만 유효(녹지)하고 나머지는 MASK_NODATA — insufficient_data 테스트용.
+
+    예전엔 "전체 여유 bbox(margin=0.02도≈2.2km) 폭의 30%"를 왼쪽 끝부터 잘랐는데, 여유
+    bbox가 반경(500m)보다 훨씬 커서 그 30%가 반경 원과 전혀 안 겹쳤다(실제 PostgreSQL로
+    돌려보니 반경 시작 전 ~230m에서 끝나 coverage_pct=0으로 나옴, 감사에서 발견). 이제는
+    반경 중심 기준 미터 단위로 띠를 둬서 실제로 겹치게 한다.
+    """
     height, width = _tile_shape(left, bottom, right, top)
     array = np.full((height, width), MASK_NODATA, dtype=np.uint8)
-    valid_cols = int(width * valid_fraction)
-    array[:, :valid_cols] = 1
+    center_col = width // 2
+    half_cols = max(int(valid_half_width_m / _RESOLUTION_M), 1)
+    start = max(center_col - half_cols, 0)
+    end = min(center_col + half_cols, width)
+    array[:, start:end] = 1
     _write_tile(path, left, bottom, right, top, array)
 
 
@@ -244,13 +259,16 @@ def test_compute_green_stats_insufficient_valid_ratio_is_null(tmp_path):
     building = _make_building()
     left, bottom, right, top = _margin_bounds_32652()
     path = tmp_path / "mostly_nodata.tif"
-    _write_mostly_nodata(path, left, bottom, right, top, valid_fraction=0.3)
+    # 반경(500m) 중심 기준 ±110m 띠만 유효 -> 원 면적의 대략 28%와 겹친다(원-현 면적 공식:
+    # 1 - 2*(acos(d/R) - (d/R)*sqrt(1-(d/R)^2))/pi, d=110, R=500 -> ~0.278). 좌표계·픽셀
+    # 격자 보정 때문에 실제 값은 이 근처에서 조금 움직일 수 있어 허용폭을 넓게 둔다.
+    _write_partial_valid_band(path, left, bottom, right, top, valid_half_width_m=110)
     _make_green_product(tmp_path, "mostly_nodata")
 
     stats = compute_green_stats(building, 500)
 
     assert stats["ratio_pct"] is None  # spec 5-3: 유효 비율<50% -> insufficient_data
-    assert stats["coverage_pct"] == pytest.approx(30.0, abs=5.0)
+    assert stats["coverage_pct"] == pytest.approx(28.0, abs=8.0)
 
 
 def test_compute_green_stats_includes_region_avg_and_diff(tmp_path):

@@ -32,7 +32,7 @@ class Building(models.Model):
 
     class Meta:
         db_table = "building"
-        indexes = [models.Index(fields=["bjd_code"])]
+        indexes = [models.Index(fields=["bjd_code"], name="building_bjd_code_idx")]
 
     def __str__(self):
         return self.building_key
@@ -65,7 +65,7 @@ class Region(models.Model):
 
     class Meta:
         db_table = "region"
-        indexes = [models.Index(fields=["level"])]
+        indexes = [models.Index(fields=["level"], name="region_level_idx")]
 
     def __str__(self):
         return f"{self.region_code} {self.name}"

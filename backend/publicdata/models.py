@@ -42,8 +42,11 @@ class Trade(models.Model):
     class Meta:
         db_table = "trade"
         indexes = [
-            models.Index(fields=["pnu", "deal_ym"]),
-            models.Index(fields=["house_type", "deal_type", "sgg_code", "deal_ym"]),
+            models.Index(fields=["pnu", "deal_ym"], name="trade_pnu_deal_ym_idx"),
+            models.Index(
+                fields=["house_type", "deal_type", "sgg_code", "deal_ym"],
+                name="trade_type_sgg_ym_idx",
+            ),
         ]
 
     def __str__(self):

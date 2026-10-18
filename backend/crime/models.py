@@ -12,7 +12,7 @@ class CrimeSegment(models.Model):
 
     class Meta:
         db_table = "crime_segment"
-        indexes = [models.Index(fields=["grad"])]
+        indexes = [models.Index(fields=["grad"], name="crime_segment_grad_idx")]
 
     def __str__(self):
         return f"{self.objt_id} (grad={self.grad})"

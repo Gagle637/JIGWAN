@@ -22,7 +22,9 @@ class IndexRun(models.Model):
 
     class Meta:
         db_table = "index_run"
-        indexes = [models.Index(fields=["job", "region_code"])]
+        indexes = [
+            models.Index(fields=["job", "region_code"], name="index_run_job_region_code_idx")
+        ]
 
     def __str__(self):
         return f"{self.job}:{self.region_code} [{self.status}]"

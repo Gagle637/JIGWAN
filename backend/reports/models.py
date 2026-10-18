@@ -31,7 +31,12 @@ class Report(models.Model):
 
     class Meta:
         db_table = "report"
-        indexes = [models.Index(fields=["user", "building", "created_at"])]
+        indexes = [
+            models.Index(
+                fields=["user", "building", "created_at"],
+                name="report_user_building_created_idx",
+            )
+        ]
 
     def __str__(self):
         return f"report#{self.pk} ({self.status})"

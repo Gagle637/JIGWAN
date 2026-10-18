@@ -17,7 +17,9 @@ class FavoriteFolder(models.Model):
 
     class Meta:
         db_table = "favorite_folder"
-        indexes = [models.Index(fields=["user", "parent"])]
+        indexes = [
+            models.Index(fields=["user", "parent"], name="favorite_folder_user_parent_idx")
+        ]
 
     def __str__(self):
         return self.name
@@ -40,7 +42,9 @@ class UserBuilding(models.Model):
         constraints = [
             models.UniqueConstraint(fields=["user", "building"], name="uq_user_building")
         ]
-        indexes = [models.Index(fields=["user", "folder"])]
+        indexes = [
+            models.Index(fields=["user", "folder"], name="user_building_user_folder_idx")
+        ]
 
     def __str__(self):
         return f"{self.user_id}:{self.building_id}"

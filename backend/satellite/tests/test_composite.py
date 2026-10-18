@@ -1,4 +1,5 @@
 import numpy as np
+import pytest
 
 from satellite.composite import (
     GREEN_NDVI_THRESHOLD,
@@ -32,10 +33,11 @@ def test_mask_scene_reflectance_sets_unusable_scl_to_nan():
     scl = np.array([[4, 9], [8, 2]])  # 4·2=사용가능, 9·8=구름(제외)
     masked = mask_scene_reflectance(bands, scl)
 
-    assert masked["B04"][0, 0] == 0.1  # SCL=4, 유지
+    # float32라 0.1/0.4의 float64 리터럴과 정확히는 안 맞는다(감사에서 발견) -> approx로 비교.
+    assert masked["B04"][0, 0] == pytest.approx(0.1)  # SCL=4, 유지
     assert np.isnan(masked["B04"][0, 1])  # SCL=9, 제외
     assert np.isnan(masked["B04"][1, 0])  # SCL=8, 제외
-    assert masked["B04"][1, 1] == 0.4  # SCL=2, 유지
+    assert masked["B04"][1, 1] == pytest.approx(0.4)  # SCL=2, 유지
 
 
 def test_median_with_min_observations_requires_three():

@@ -6,9 +6,9 @@ HIGH_GRAD_THRESHOLD = 8  # spec 8-5: 적색 계열(8~10등급)을 고등급으�
 
 # GEOS 3.9.0(PostGIS 3.4.3이 쓰는 버전)의 OverlayNG가 한 지오메트리가 다른 지오메트리에
 # 완전히 포함되는(경계를 안 건너는) 경우 ST_Intersection을 빈 지오메트리로 돌리는 버그가 있다
-# (실측 확인됨: ST_Within/ST_Covers는 true인데 ST_Intersection(a,b)는 LINESTRING EMPTY).
+# (실측 확인됨: ST_Within/ST_Covers는 true인데 ST_Intersection(a,b)는 빈 지오메트리).
 # 3번째 인자로 gridSize를 주면 안정적인 FixedPrecision 오버레이 경로를 타 정확한 결과가 나온다.
-_OVERLAY_GRID_SIZE_DEG = 0.0000001  # 약 1cm — 미터 단위 길이 계산에 영향 없는 정밀도
+_OVERLAY_GRID_SIZE_DEG = 0.0000001  # 약 1cm — 면적(㎡) 계산에 영향 없는 정밀도
 
 _SEGMENTS_IN_RADIUS_SQL = """
 WITH b AS (SELECT geom FROM building WHERE id = %(building_id)s),
@@ -16,7 +16,7 @@ WITH b AS (SELECT geom FROM building WHERE id = %(building_id)s),
      near AS (SELECT ST_Buffer(geom::geography, %(near_radius)s)::geometry AS g FROM b)
 SELECT
     cs.grad,
-    ST_Length(ST_Intersection(cs.geom, radius.g, %(grid_size)s)::geography) AS length_m,
+    ST_Area(ST_Intersection(cs.geom, radius.g, %(grid_size)s)::geography) AS area_m2,
     ST_Intersects(cs.geom, near.g) AS within_near
 FROM crime_segment cs, radius, near
 WHERE ST_Intersects(cs.geom, radius.g)
@@ -44,17 +44,17 @@ def compute_crime_stats(building, radius_m: int) -> dict | None:
     near_grads = [grad for grad, _, within_near in rows if within_near]
     near_grad = max(near_grads) if near_grads else None
 
-    flagged_length_m = sum(length_m or 0.0 for _, length_m, _ in rows)
-    high_length_m = sum(
-        length_m or 0.0 for grad, length_m, _ in rows if grad >= HIGH_GRAD_THRESHOLD
+    flagged_area_m2 = sum(area_m2 or 0.0 for _, area_m2, _ in rows)
+    high_area_m2 = sum(
+        area_m2 or 0.0 for grad, area_m2, _ in rows if grad >= HIGH_GRAD_THRESHOLD
     )
     high_share_pct = (
-        round(high_length_m / flagged_length_m * 100, 1) if flagged_length_m else 0.0
+        round(high_area_m2 / flagged_area_m2 * 100, 1) if flagged_area_m2 else 0.0
     )
 
     return {
         "max_grad": max_grad,
         "near_grad": near_grad,
-        "flagged_length_m": round(flagged_length_m, 1),
+        "flagged_area_m2": round(flagged_area_m2, 1),
         "high_share_pct": high_share_pct,
     }

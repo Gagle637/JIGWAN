@@ -8,9 +8,15 @@ pytestmark = pytest.mark.django_db
 
 
 def _feature(objt_id, grad, coords):
+    """coords는 사각형의 두 대각 모서리 [[x1,y1],[x2,y2]] — 실측 확인된 응답 형태인
+    MultiPolygon으로 감싼다(spec 8-3)."""
+    (x1, y1), (x2, y2) = coords
     return {
         "properties": {"OBJT_ID": objt_id, "TY_CD": "10201000", "GRAD": grad},
-        "geometry": {"type": "LineString", "coordinates": coords},
+        "geometry": {
+            "type": "MultiPolygon",
+            "coordinates": [[[[x1, y1], [x2, y1], [x2, y2], [x1, y2], [x1, y1]]]],
+        },
     }
 
 
@@ -102,7 +108,7 @@ def test_run_safety_sync_resumes_only_unfinished_cells_and_cleans_stale_segments
         objt_id="OLD1",
         grad=4,
         data_period="2022-07/2023-06",
-        geom="SRID=4326;LINESTRING(0 0, 0.001 0.001)",
+        geom="SRID=4326;MULTIPOLYGON(((0 0, 0.001 0, 0.001 0.001, 0 0.001, 0 0)))",
     )
 
     calls = []

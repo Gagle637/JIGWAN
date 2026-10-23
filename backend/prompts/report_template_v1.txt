@@ -37,7 +37,7 @@ Reasoning: low
   "green": {"ratio_pct": 23.4, "region_avg_pct": 18.1, "diff_pp": 5.3, "coverage_pct": 92.0},
   "change": {"total_area_m2": 41200.0, "areas": []},
   "trades": {"months": 24, "count": 87, "monthly": [{"ym": "2026-09", "median_price_per_m2": 812.3, "count": 5}]},
-  "crime": {"max_grad": 7, "near_grad": 5, "flagged_length_m": 640.0, "high_share_pct": 4.2},
+  "crime": {"max_grad": 7, "near_grad": 5, "flagged_area_m2": 640.0, "high_share_pct": 4.2},
   "missing": []
 }
 
@@ -57,7 +57,7 @@ Reasoning: low
     {"section": "summary", "index": 0, "keys": ["green.ratio_pct", "green.region_avg_pct", "green.diff_pp"]},
     {"section": "summary", "index": 1, "keys": ["change.total_area_m2"]},
     {"section": "summary", "index": 2, "keys": ["trades.count", "trades.monthly"]},
-    {"section": "living", "index": 0, "keys": ["spec.approval_date", "spec.age_years", "green.ratio_pct", "green.region_avg_pct", "green.diff_pp", "crime.max_grad", "crime.near_grad", "crime.flagged_length_m", "crime.high_share_pct"]},
+    {"section": "living", "index": 0, "keys": ["spec.approval_date", "spec.age_years", "green.ratio_pct", "green.region_avg_pct", "green.diff_pp", "crime.max_grad", "crime.near_grad", "crime.flagged_area_m2", "crime.high_share_pct"]},
     {"section": "investment", "index": 0, "keys": ["trades.count", "trades.monthly", "change.total_area_m2"]},
     {"section": "risks", "index": 0, "keys": ["change.total_area_m2"]}
   ]

@@ -14,6 +14,7 @@ def _lonlat_to_tile(lon: float, lat: float, zoom: int) -> tuple[int, int]:
     return x, y
 
 
+@pytest.mark.django_db
 def test_tile_below_min_zoom_is_empty(django_assert_num_queries):
     with django_assert_num_queries(0):
         tile = render_building_tile(13, 0, 0)

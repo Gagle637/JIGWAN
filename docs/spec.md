@@ -88,7 +88,7 @@ tiles = {item.id.split("_")[5] for item in items}   # 예: {"T52SCF", ...}
 
 | 용도 | 좌표계·타입 | 방식 |
 | --- | --- | --- |
-| DB 저장(건물, 카탈로그 bbox, 변화 폴리곤, 실거래 위치, 범죄주의 도로 구간) | EPSG:4326 geometry | 유일한 원본. GIST 인덱스 + 거리 검색용 `CREATE INDEX ... USING GIST ((geom::geography))` |
+| DB 저장(건물, 카탈로그 bbox, 변화 폴리곤, 실거래 위치, 범죄주의 밀도 구역) | EPSG:4326 geometry | 유일한 원본. GIST 인덱스 + 거리 검색용 `CREATE INDEX ... USING GIST ((geom::geography))` |
 | 버퍼·거리·면적 | geography | `ST_Buffer(geom::geography, 500)::geometry`, `ST_DWithin(a::geography, b::geography, 500)`, `ST_Area(geom::geography)` |
 | 위성 결과 래스터(COG) | EPSG:32652 | DB 밖 파일, 원본 좌표계 유지 |
 | 조회 시 반경으로 COG 읽기 | EPSG:32652 | 반경 폴리곤만 COG 좌표계로 변환해 마스크(래스터는 재투영하지 않음) |
@@ -160,7 +160,7 @@ MVP는 대전 전역을 결과 하나로 저장하므로 기간당 보통 한 �
 3. **계절 단위 처리**: 오래된 계절부터 다운로드 → COG 변환 → 합성(NDVI·NDBI·녹지 마스크·트루컬러) → 카탈로그 등록 순으로 한 계절을 끝내고 JP2 원본을 지운 뒤 다음 계절로 넘어간다. 디스크 최대 사용량이 한 계절분으로 제한된다.
 4. **변화 분석**: 13개 계절 합성이 끝난 뒤 최신 계절을 1·2·3년 전 같은 계절과 비교해 변화 마스크·`change_area`를 만들고 카탈로그에 등록한다.
 5. **지역 기준선**: 계절별 구·시 평균 녹지율을 `region_stat`에 저장한다.
-6. **공공데이터 백필**: 실거래 24개월(API), 건물·건축물대장(GIS건물통합정보 파일), 범죄주의 도로 구간을 적재한다. 3–5단계와 병렬로 돌려도 된다.
+6. **공공데이터 백필**: 실거래 24개월(API), 건물·건축물대장(GIS건물통합정보 파일), 범죄주의 밀도 구역을 적재한다. 3–5단계와 병렬로 돌려도 된다.
 7. **검증 후 게시**: 유효 비율·값 범위·대전 경계 커버리지를 확인하고 카탈로그 행을 `is_published = true`로 바꾼다.
 
 | 완료 기준 | 확인 방법 |
@@ -186,7 +186,7 @@ MVP는 대전 전역을 결과 하나로 저장하므로 기간당 보통 한 �
 | `catalog_publish` | 두 잡 완료 후 | cpu | 검증 통과 시 카탈로그 게시(5-3) |
 | `trade_sync` | 매일 04:00 | io | 당월·전월 재수집 |
 | `register_sync` | 매월 1일 05:00 | io | MVP 제외(건축물대장 속성은 building\_load로 함께 적재, 8-6) |
-| `safety_sync` | 매년 1월 첫째 주 + 수동 | io | 범죄주의 도로 구간 수집, 레이어 범례 갱신 |
+| `safety_sync` | 매년 1월 첫째 주 + 수동 | io | 범죄주의 밀도 구역 수집, 레이어 범례 갱신 |
 | `building_load` | 수동(새 파일을 받았을 때) | cpu | GIS건물통합정보 파일 적재 |
 
 리포트는 스케줄 잡이 아니다. 사용자가 리포트를 요청하면 API가 gpu 큐에 생성 작업을 넣는다.
@@ -253,7 +253,7 @@ MVP는 대전 전역을 결과 하나로 저장하므로 기간당 보통 한 �
   },
   "spec": {"use": "공동주택", "land_area_m2": 15230.5, "total_floor_area_m2": 48211.2, "bcr_pct": 18.2, "far_pct": 249.8, "approval_date": "2009-11-20", "age_years": 16},
   "trades": {"months": 24, "count": 87, "monthly": [{"ym": "2026-09", "deal_type": "sale", "median_price_per_m2": 812.3, "count": 5}]},
-  "crime": {"max_grad": 7, "near_grad": 5, "flagged_length_m": 640, "high_share_pct": 4.2},
+  "crime": {"max_grad": 7, "near_grad": 5, "flagged_area_m2": 640, "high_share_pct": 4.2},
   "my": {"is_favorite": true, "color": "#e8590c", "label": "후보 1순위", "folder_id": 4, "report_count": 2},
   "missing": []
 }
@@ -463,12 +463,14 @@ Reasoning: low
 
 ### 8-3. 범죄 안전(생활안전지도 범죄주의구간)
 
-범죄 안전은 생활안전지도의 [범죄주의구간(전체)](https://www.safemap.go.kr/opna/data/dataViewRenew.do?objtId=205) 레이어를 쓴다. 경찰청이 5대 범죄(살인·강도·성폭력·절도·폭력)의 최근 1년 발생을 밀도분석해 도로 구간마다 10단계 등급(`GRAD`)을 매긴 데이터라, 시군구가 아니라 건물 반경 단위로 집계할 수 있다([공공데이터포털 설명](https://www.data.go.kr/data/15101797/openapi.do)).
+범죄 안전은 생활안전지도의 [범죄주의구간(전체)](https://www.safemap.go.kr/opna/data/dataViewRenew.do?objtId=205) 레이어를 쓴다. 경찰청이 5대 범죄(살인·강도·성폭력·절도·폭력)의 최근 1년 발생을 밀도분석해 구역(폴리곤)마다 10단계 등급(`GRAD`)을 매긴 데이터라, 시군구가 아니라 건물 반경 단위로 집계할 수 있다([공공데이터포털 설명](https://www.data.go.kr/data/15101797/openapi.do)).
 
 | 항목 | 내용 |
 | --- | --- |
-| 호출 | WMS `safemap.go.kr/openapi2/IF_0087_WMS`, 레이어 `A2SM_CRMNLHSPOT_TOT`, 스타일 `A2SM_CrmnlHspot_Tot_Tot`, `GetFeatureInfo`(GeoJSON 응답) |
-| 응답 속성 | `OBJT_ID`, `TY_CD`(10201000 = 전체), `GRAD`, `CTPRVN_CD`, `SGG_CD`. `TY_NM`은 인코딩이 깨져 오므로 쓰지 않고 `TY_CD`로 판별 |
+| 호출(실측 확인) | `safemap.go.kr/openapi2/IF_0087_WMS`(공식, `serviceKey` 필요)는 `GetMap`만 허용하고 `GetFeatureInfo`는 서버에서 차단한다(실측: 모든 대소문자 조합에서 400). 지도 화면이 내부적으로 쓰는 `www.safemap.go.kr/geoserver_pos/safemap/wms`(GeoServer 직결, 인증 불필요)로 `GetFeatureInfo`를 호출한다. 레이어 `A2SM_CRMNLHSPOT_TOT`, 스타일 `A2SM_CrmnlHspot_Tot_Tot`, 응답은 GeoJSON. 지도 타일 표시(`layers` 앱의 WMS 프록시, `GetMap`)는 공식 엔드포인트+`serviceKey`를 그대로 쓴다 |
+| 비공식 엔드포인트 주의 | `geoserver_pos` 경로는 공식 문서에 없는 내부 경로라 공지 없이 바뀌거나 막힐 수 있다. 실패 시 공식 API(GetMap만)나 safetydata.go.kr CSV 배포본 등 대안을 다시 검토한다 |
+| 응답 속성 | `OBJT_ID`, `TY_CD`(10201000 = 전체, 실측 확인: 정수가 아니라 `10201000.0` 실수로 온다 — 문자열 비교 금지, `int(float(value))`로 비교), `GRAD`, `CTPRVN_CD`, `SGG_CD`. `TY_NM`은 인코딩이 깨져 오므로 쓰지 않고 `TY_CD`로 판별 |
+| 지오메트리(실측 확인) | `MultiPolygon`(밀도분석 구역 폴리곤) — 도로 선이 아니다. 길이가 아니라 면적으로 지표를 낸다(8-5) |
 | 데이터 기간·갱신 | 최근 1년 분(공공데이터포털 표기 2023년 7월–2024년 6월), 연 1회 갱신 → `safety_sync` 연 1회와 맞음 |
 | 제공 형식 제약 | WMS만 제공(그리드 XML은 준비 중) → 전체 다운로드가 없어 배치에서 구역 단위 GetFeatureInfo로 수집(8-4) |
 
@@ -477,27 +479,27 @@ Reasoning: low
 1. 대전 경계를 2km × 2km 구역으로 나눈다(수집할 때만 쓰는 임시 구역).
 2. 구역마다 `GetFeatureInfo`를 한 번 호출한다. `BBOX`는 구역, 조회 지점은 구역 중앙, 픽셀 버퍼는 구역 전체를 덮는 크기, `FEATURE_COUNT`는 크게, 응답은 GeoJSON으로 받는다.
 3. 반환된 피처 수가 `FEATURE_COUNT` 상한과 같으면 잘렸을 수 있으므로, 그 구역을 4등분해 다시 호출한다(최소 250m까지). 서버에 픽셀 버퍼 상한이 있으면 구역 크기를 그에 맞춰 줄인다.
-4. 구역 경계에 걸친 구간은 여러 번 오므로 `OBJT_ID`로 중복 제거해 `crime_segment(objt_id, grad, data_period, geom LineString 4326)`에 저장한다.
+4. 구역 경계에 걸친 구역 폴리곤은 여러 번 오므로 `OBJT_ID`로 중복 제거해 `crime_segment(objt_id, grad, data_period, geom MultiPolygon 4326)`에 저장한다.
 5. 진행 상황을 구역 단위로 `crime_fetch_progress(cell_id, status, feature_count, fetched_at)`에 기록해, 중간에 끊기면 미완료 구역부터 이어서 돌린다.
 6. 요청 사이에 1–2초 간격을 두고, 429·503·타임아웃은 1·5·25분 간격으로 최대 3회 재시도한다. 그래도 실패한 구역은 `failed`로 남겨 다음 실행에서 다시 시도한다.
 7. 호출량은 구역 수와 분할 호출을 합쳤 수백 회 수준이다.
 
 ### 8-5. 건물 범죄 지표
 
-`GRAD` 하나로 ‘주변 범죄 수준’을 판단하되, 반경 안에 등급이 다른 도로 구간이 여럿 있으므로 대표값 규칙을 정해 둔다. 지표는 조회 시 반경과 겹치는 `crime_segment` 도로 구간으로 계산하고, 길이는 `ST_Length(ST_Intersection(geom, 반경)::geography)`로 구한다.
+`GRAD` 하나로 ‘주변 범죄 수준’을 판단하되, 반경 안에 등급이 다른 구역 폴리곤이 여럿 있으므로 대표값 규칙을 정해 둔다. 지표는 조회 시 반경과 겹치는 `crime_segment` 구역 폴리곤으로 계산하고, 면적은 `ST_Area(ST_Intersection(geom, 반경)::geography)`로 구한다. GEOS 3.9.0(OverlayNG)이 한쪽이 다른 쪽에 완전히 포함되는 경우 `ST_Intersection`을 빈 지오메트리로 돌리는 버그가 있어, `ST_Intersection`의 3번째 인자로 gridSize(`0.0000001`, 약 1cm)를 줘서 우회한다(실측 확인됨).
 
 | 지표 | 정의 | 쓰임 |
 | --- | --- | --- |
-| `crime.max_grad` | 반경과 겹치는 구간의 `GRAD` 최댓값 | ‘주변에서 가장 높은 등급’ |
-| `crime.near_grad` | 건물에서 50m 이내 구간의 최고 등급 | 건물 바로 앞 도로 수준 |
-| `crime.flagged_length_m` | 반경 안 주의구간 도로의 총 길이(m) | 주의구간이 얼마나 넓게 퍼져 있는지 |
-| `crime.high_share_pct` | 반경 안 주의구간 길이 중 고등급(`GRAD` ≥ 8) 구간 길이의 비율 | 고등급 구간의 비중 |
+| `crime.max_grad` | 반경과 겹치는 구역의 `GRAD` 최댓값 | ‘주변에서 가장 높은 등급’ |
+| `crime.near_grad` | 건물에서 50m 이내 구역의 최고 등급 | 건물 바로 앞 수준 |
+| `crime.flagged_area_m2` | 반경 안 주의구역의 총 면적(㎡) | 주의구역이 얼마나 넓게 퍼져 있는지 |
+| `crime.high_share_pct` | 반경 안 주의구역 면적 중 고등급(`GRAD` ≥ 8) 구역 면적의 비율 | 고등급 구역의 비중 |
 
 주의구간이 없는 곳은 ‘안전’이 아니라 ‘주의구간 미지정’으로 표현하고, 리포트에는 데이터 기간(최근 1년)을 함께 적는다. 확인 결과와 운영 규칙은 다음과 같다.
 
 - **등급 방향(확인됨)**: 범례는 1등급 연노랑(#ffffb2)에서 10등급 진적색(#bd0026)으로, 높을수록 최근 1년 범죄 발생 밀도가 높았던 구간이다. 제공처는 ‘등급이 높은 지역이 현재 위험하다는 의미는 아니다’라고 고지하므로, 화면·리포트에서 ‘위험’ 표현을 쓰지 않고 이 고지를 함께 표시한다.
 - **고등급 기준**: 범례의 적색 계열인 8–10등급을 고등급으로 둔다(7등급부터 아래는 주황·노랑 계열).
-- **응답·좌표계(확인됨)**: GetFeatureInfo 응답에 도로 구간 geometry가 포함되고, WMS는 EPSG:3857 요청을 지원한다.
+- **응답·좌표계(확인됨)**: GetFeatureInfo 응답에 구역 폴리곤 geometry가 포함되고, WMS는 EPSG:3857 요청을 지원한다.
 - **이용 조건(확인됨)**: 지도 표시와 집계 모두 사용할 수 있다. 레이어에는 고지(`WARN`)와 출처를 함께 표시한다.
 - **데이터 기간**: 수집할 때 확인한 실제 기간을 `data_period`에 기록해 화면·리포트에 표시한다.
 - **범위**: 교통·화재 등 다른 안전 레이어는 MVP에서 제외하며, 추가할 때도 같은 수집 방식을 쓴다.
@@ -702,7 +704,7 @@ A0, A6·A7(특수지, PNU에 포함), A10, A19, A21, A23, A28은 적재하지 �
 | 캐시 | 디스크 타일 캐시, TTL 30일(원천 데이터가 연 1회 갱신). `safety_sync` 때 비움 |
 | 장애 시 | 원천 오류면 투명 타일을 반환하고 레이어에 ‘일시적으로 불러올 수 없음’ 표시 |
 
-레이어 표시와 별도로, 리포트용 범죄 지표(8-5)는 같은 데이터를 GetFeatureInfo로 수집한 도로 구간(`crime_segment`)으로 집계한다.
+레이어 표시와 별도로, 리포트용 범죄 지표(8-5)는 같은 데이터를 GetFeatureInfo로 수집한 밀도 구역 폴리곤(`crime_segment`)으로 집계한다.
 
 ### 10-4. 내 표시 건물 스타일
 

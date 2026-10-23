@@ -3,12 +3,13 @@ from django.db import models
 
 
 class CrimeSegment(models.Model):
-    """생활안전지도 범죄주의구간(전체) 도로 구간(spec 8-3·8-4)."""
+    """생활안전지도 범죄주의구간(전체) 밀도분석 구역(spec 8-3·8-4). 실측 확인: 도로 선이
+    아니라 MultiPolygon 구역이다."""
 
     objt_id = models.CharField(max_length=40, unique=True)
     grad = models.SmallIntegerField()
     data_period = models.CharField(max_length=20)  # 예: "2023-07/2024-06"
-    geom = gis_models.LineStringField(srid=4326)
+    geom = gis_models.MultiPolygonField(srid=4326)
 
     class Meta:
         db_table = "crime_segment"

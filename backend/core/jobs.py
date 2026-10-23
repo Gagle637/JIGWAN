@@ -119,7 +119,10 @@ def tracked_run(job_name: str, region_code: str, lock_ttl_seconds: int = 3600):
         run.save(update_fields=["status", "error", "finished_at"])
         release_lock(lock)
         # 의도된 조기 종료이므로 호출자에게 전파하지 않는다.
-    except Exception as exc:
+    except BaseException as exc:
+        # Ctrl+C(KeyboardInterrupt)는 Exception이 아니라 BaseException이라 except
+        # Exception으로는 안 잡힌다 — 그러면 락이 안 풀려 다음 실행이 계속 skipped된다
+        # (실제 재현됨). SystemExit도 같은 이유로 여기서 같이 잡는다.
         run.status = IndexRun.Status.FAILED
         run.error = str(exc)
         run.finished_at = timezone.now()

@@ -78,11 +78,11 @@ _CHANGE_SCHEMA = {
 
 _CRIME_SCHEMA = {
     "type": ["object", "null"],
-    "required": ["max_grad", "near_grad", "flagged_length_m", "high_share_pct"],
+    "required": ["max_grad", "near_grad", "flagged_area_m2", "high_share_pct"],
     "properties": {
         "max_grad": {"type": "integer"},
         "near_grad": {"type": ["integer", "null"]},
-        "flagged_length_m": {"type": "number"},
+        "flagged_area_m2": {"type": "number"},
         "high_share_pct": {"type": "number"},
     },
 }
@@ -197,7 +197,7 @@ def test_ready_response_matches_contract(tmp_path):
         objt_id="CTB3SEG",
         grad=5,
         data_period="2023-07/2024-06",
-        geom="LINESTRING(127.385 36.351, 127.3852 36.351)",
+        geom="MULTIPOLYGON(((127.385 36.351, 127.3852 36.351, 127.3852 36.3512, 127.385 36.3512, 127.385 36.351)))",
     )
 
     client = APIClient()

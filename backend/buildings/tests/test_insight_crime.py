@@ -41,7 +41,7 @@ def test_crime_section_present_when_segment_intersects_radius():
         objt_id="SEG1",
         grad=7,
         data_period="2023-07/2024-06",
-        geom="LINESTRING(127.385 36.351, 127.3852 36.351)",
+        geom="MULTIPOLYGON(((127.385 36.351, 127.3852 36.351, 127.3852 36.3512, 127.385 36.3512, 127.385 36.351)))",
     )
 
     client = APIClient()
@@ -62,7 +62,7 @@ def test_as_of_crime_data_period_reflects_latest_collection_even_without_nearby_
         objt_id="FARAWAY",
         grad=5,
         data_period="2023-07/2024-06",
-        geom="LINESTRING(128.0 37.0, 128.001 37.001)",  # 건물과 무관한 위치
+        geom="MULTIPOLYGON(((128.0 37.0, 128.001 37.0, 128.001 37.001, 128.0 37.001, 128.0 37.0)))",  # 건물과 무관한 위치
     )
 
     client = APIClient()
@@ -82,7 +82,7 @@ def test_insight_cache_invalidates_after_new_safety_sync_indexrun():
         objt_id="SEG2",
         grad=5,
         data_period="2023-07/2024-06",
-        geom="LINESTRING(127.385 36.351, 127.3852 36.351)",
+        geom="MULTIPOLYGON(((127.385 36.351, 127.3852 36.351, 127.3852 36.3512, 127.385 36.3512, 127.385 36.351)))",
     )
 
     client = APIClient()
@@ -129,7 +129,7 @@ def test_status_ready_when_every_section_is_present(tmp_path):
         objt_id="SEG3",
         grad=5,
         data_period="2023-07/2024-06",
-        geom="LINESTRING(127.385 36.351, 127.3852 36.351)",
+        geom="MULTIPOLYGON(((127.385 36.351, 127.3852 36.351, 127.3852 36.3512, 127.385 36.3512, 127.385 36.351)))",
     )
 
     client = APIClient()

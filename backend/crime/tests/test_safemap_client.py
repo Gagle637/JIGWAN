@@ -18,20 +18,8 @@ def _feature(objt_id, grad, ty_cd="10201000"):
     }
 
 
-@pytest.fixture(autouse=True)
-def _service_key(settings):
-    settings.SAFEMAP_API_KEY = "test-service-key"
-
-
-def test_requires_service_key_configured(settings):
-    settings.SAFEMAP_API_KEY = ""
-
-    with httpx.Client() as client, pytest.raises(ValueError):
-        safemap_client.fetch_feature_info(client, BBOX, 100)
-
-
 @respx.mock
-def test_sends_wms_1_1_1_request_with_service_key_and_bbox_order():
+def test_sends_wms_1_1_1_request_with_bbox_order():
     route = respx.get(safemap_client.WMS_BASE_URL).mock(
         return_value=httpx.Response(200, json={"features": []})
     )
@@ -50,7 +38,6 @@ def test_sends_wms_1_1_1_request_with_service_key_and_bbox_order():
     assert sent["bbox"] == "100.0,200.0,2100.0,2200.0"  # minx,miny,maxx,maxy
     assert sent["feature_count"] == "2000"
     assert sent["info_format"] == "application/json"
-    assert sent["serviceKey"] == "test-service-key"
 
 
 @respx.mock

@@ -43,7 +43,7 @@
           {"ym": "2026-09", "deal_type": "sale", "median_price_per_m2": 812.3, "count": 5}
         ]
       },
-      "crime": {"max_grad": 4, "near_grad": 3, "flagged_length_m": 210.0, "high_share_pct": 0.0},
+      "crime": {"max_grad": 4, "near_grad": 3, "flagged_area_m2": 210.0, "high_share_pct": 0.0},
       "missing": []
     },
     "reports": {
@@ -121,7 +121,7 @@
           {"ym": "2026-09", "deal_type": "sale", "median_price_per_m2": 655.0, "count": 2}
         ]
       },
-      "crime": {"max_grad": 6, "near_grad": 4, "flagged_length_m": 480.0, "high_share_pct": 0.0},
+      "crime": {"max_grad": 6, "near_grad": 4, "flagged_area_m2": 480.0, "high_share_pct": 0.0},
       "missing": []
     },
     "reports": {
@@ -192,7 +192,7 @@
         "age_years": 25
       },
       "trades": {"months": 24, "count": 3, "monthly": [{"ym": "2026-07", "deal_type": "sale", "median_price_per_m2": 410.5, "count": 1}]},
-      "crime": {"max_grad": 9, "near_grad": 8, "flagged_length_m": 820.0, "high_share_pct": 62.0},
+      "crime": {"max_grad": 9, "near_grad": 8, "flagged_area_m2": 820.0, "high_share_pct": 62.0},
       "missing": []
     },
     "reports": {
@@ -211,7 +211,7 @@
           {"section": "summary", "index": 0, "keys": ["green.ratio_pct", "green.region_avg_pct"]},
           {"section": "summary", "index": 1, "keys": ["crime.max_grad", "crime.high_share_pct"]},
           {"section": "summary", "index": 2, "keys": ["trades.count"]},
-          {"section": "living", "index": 0, "keys": ["spec.approval_date", "spec.age_years", "green.ratio_pct", "crime.max_grad", "crime.near_grad", "crime.flagged_length_m", "crime.high_share_pct"]},
+          {"section": "living", "index": 0, "keys": ["spec.approval_date", "spec.age_years", "green.ratio_pct", "crime.max_grad", "crime.near_grad", "crime.flagged_area_m2", "crime.high_share_pct"]},
           {"section": "investment", "index": 0, "keys": ["trades.count", "trades.monthly"]},
           {"section": "risks", "index": 0, "keys": ["crime.high_share_pct"]}
         ]
@@ -307,7 +307,7 @@
         "age_years": 28
       },
       "trades": null,
-      "crime": {"max_grad": 3, "near_grad": null, "flagged_length_m": 90.0, "high_share_pct": 0.0},
+      "crime": {"max_grad": 3, "near_grad": null, "flagged_area_m2": 90.0, "high_share_pct": 0.0},
       "missing": [
         {"field": "trades", "reason": "detached_house_district_not_implemented"},
         {"field": "green", "reason": "no_satellite_data"},

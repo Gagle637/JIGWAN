@@ -38,7 +38,7 @@ Reasoning: low
   "spec": {"use": "공동주택", "approval_date": "2009-11-20", "age_years": 16},
   "green": {"ratio_pct": 23.4, "region_avg_pct": 18.1, "diff_pp": 5.3},
   "change": {"total_area_m2": 41200.0},
-  "crime": {"max_grad": 7, "near_grad": 5, "flagged_length_m": 640.0, "high_share_pct": 4.2}
+  "crime": {"max_grad": 7, "near_grad": 5, "flagged_area_m2": 640.0, "high_share_pct": 4.2}
 }
 [사용자 요청] 아이 둘 키우는 4인 가족 실거주 관점에서 녹지와 주변 공사 위주로 봐줘 [/사용자 요청]
 
@@ -49,7 +49,7 @@ Reasoning: low
   "evidence": [
     {"section": "녹지", "index": 0, "keys": ["green.ratio_pct", "green.region_avg_pct", "green.diff_pp"]},
     {"section": "개발 징후", "index": 0, "keys": ["change.total_area_m2"]},
-    {"section": "범죄", "index": 0, "keys": ["crime.max_grad", "crime.near_grad", "crime.flagged_length_m"]}
+    {"section": "범죄", "index": 0, "keys": ["crime.max_grad", "crime.near_grad", "crime.flagged_area_m2"]}
   ],
   "limitations": [
     "통학 거리·학교 배정 정보는 제공 데이터에 없어 답할 수 없음"

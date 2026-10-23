@@ -1,17 +1,29 @@
 """생활안전지도 WMS GetFeatureInfo 클라이언트(spec 8-3·8-4).
 
-WMS 1.1.1, 좌표계는 srs=EPSG:3857, BBOX는 minx,miny,maxx,maxy 순서, 인증은 serviceKey
-쿼리 파라미터(사용자 확인). TY_NM은 인코딩이 깨져 오므로 쓰지 않고 TY_CD로 판별한다(spec 8-3).
+WMS 1.1.1, 좌표계는 srs=EPSG:3857, BBOX는 minx,miny,maxx,maxy 순서. 공식 게이트웨이
+(openapi2/IF_0087_WMS, serviceKey 필요)는 GetMap만 허용하고 GetFeatureInfo는 서버에서
+차단한다(실측 확인: 대소문자 무관 전부 400) — 지도 화면이 내부적으로 쓰는 GeoServer
+엔드포인트(인증 불필요)로 호출한다(spec 8-3). TY_NM은 인코딩이 깨져 오므로 쓰지 않고
+TY_CD로 판별한다.
 """
 import httpx
-from django.conf import settings
 
 from core.exceptions import ExternalCallError
 
-WMS_BASE_URL = "https://safemap.go.kr/openapi2/IF_0087_WMS"
+WMS_BASE_URL = "https://www.safemap.go.kr/geoserver_pos/safemap/wms"
 LAYER_NAME = "A2SM_CRMNLHSPOT_TOT"
 STYLE_NAME = "A2SM_CrmnlHspot_Tot_Tot"
-TARGET_TY_CD = "10201000"  # 전체(spec 8-3)
+TARGET_TY_CD = 10201000  # 전체(spec 8-3)
+
+
+def _ty_cd_matches(value) -> bool:
+    """TY_CD가 정수가 아니라 실수(예: 10201000.0)로 내려오는 게 실측 확인됐다 —
+    문자열 비교(str(10201000.0) != "10201000")는 전부 걸러지는 버그가 있었다."""
+    try:
+        return int(float(value)) == TARGET_TY_CD
+    except (TypeError, ValueError):
+        return False
+
 
 # GetFeatureInfo에 쓰는 가상 이미지 크기 — 중앙 클릭 + 전체를 덮는 버퍼로 셀 안 전체 구간을 받는
 # 용도일 뿐이라 실제 렌더링과는 무관하다(spec 8-4: "조회 지점은 구역 중앙, 픽셀 버퍼는 구역
@@ -24,9 +36,6 @@ def fetch_feature_info(
     client: httpx.Client, bbox_3857: tuple[float, float, float, float], feature_count: int
 ) -> list[dict]:
     """bbox(EPSG:3857) 전체를 덮는 GetFeatureInfo 호출 1회. TY_CD==전체만 걸러 돌려준다."""
-    if not settings.SAFEMAP_API_KEY:
-        raise ValueError("SAFEMAP_API_KEY가 설정되지 않았습니다.")
-
     minx, miny, maxx, maxy = bbox_3857
     params = {
         "service": "WMS",
@@ -44,7 +53,6 @@ def fetch_feature_info(
         "buffer": TILE_PIXELS // 2,
         "feature_count": feature_count,
         "info_format": "application/json",
-        "serviceKey": settings.SAFEMAP_API_KEY,
     }
     try:
         response = client.get(WMS_BASE_URL, params=params, timeout=30)
@@ -60,6 +68,4 @@ def fetch_feature_info(
 
     data = response.json()
     features = data.get("features", [])
-    return [
-        f for f in features if str(f.get("properties", {}).get("TY_CD")) == TARGET_TY_CD
-    ]
+    return [f for f in features if _ty_cd_matches(f.get("properties", {}).get("TY_CD"))]

@@ -23,12 +23,20 @@ MAX_SERIES_LENGTH = 13  # spec 5-2: 최신 계절 + 최근 3년 13개 계절
 COMPARE_PERIODS = ["1y", "2y", "3y"]
 _SEASON_ORDER = {"spring": 0, "summer": 1, "fall": 2, "winter": 3}
 
+# GEOS 3.9.0(PostGIS 3.4.3이 쓰는 버전)의 OverlayNG가 한 지오메트리가 다른 지오메트리에
+# 완전히 포함되는(경계를 안 건너는) 경우 ST_Intersection을 빈 지오메트리로 돌리는 버그가 있다
+# (crime/radius_stats.py에서 실측 확인됨). 3번째 인자로 gridSize를 주면 안정적인
+# FixedPrecision 오버레이 경로를 타 정확한 결과가 나온다.
+_OVERLAY_GRID_SIZE_DEG = 0.0000001  # 약 1cm — 면적(㎡) 계산에 영향 없는 정밀도
+
 _CHANGE_AREA_SQL = """
 SELECT
     ca.id,
     ca.period,
     ST_Area(
-        ST_Intersection(ca.geom, ST_SetSRID(ST_GeomFromGeoJSON(%(buffer)s), 4326))::geography
+        ST_Intersection(
+            ca.geom, ST_SetSRID(ST_GeomFromGeoJSON(%(buffer)s), 4326), %(grid_size)s
+        )::geography
     ) AS area_within_radius_m2,
     ST_Distance(b.geom::geography, ca.geom::geography) AS distance_m,
     ST_AsGeoJSON(ca.geom) AS geometry
@@ -200,6 +208,7 @@ def _change_areas_in_radius(building_id: int, buffer_4326_geojson: dict, product
                 "buffer": json.dumps(buffer_4326_geojson),
                 "building_id": building_id,
                 "product_ids": product_ids,
+                "grid_size": _OVERLAY_GRID_SIZE_DEG,
             },
         )
         columns = [col[0] for col in cur.description]

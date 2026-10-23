@@ -31,10 +31,11 @@ class Report(models.Model):
 
     class Meta:
         db_table = "report"
+        # 이름이 30자를 넘으면 안 됨(Django Index.max_name_length, models.E034).
         indexes = [
             models.Index(
                 fields=["user", "building", "created_at"],
-                name="report_user_building_created_idx",
+                name="report_user_bldg_created_idx",
             )
         ]
 

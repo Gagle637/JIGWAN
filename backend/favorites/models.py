@@ -17,9 +17,8 @@ class FavoriteFolder(models.Model):
 
     class Meta:
         db_table = "favorite_folder"
-        indexes = [
-            models.Index(fields=["user", "parent"], name="favorite_folder_user_parent_idx")
-        ]
+        # 이름이 30자를 넘으면 안 됨(Django Index.max_name_length, models.E034).
+        indexes = [models.Index(fields=["user", "parent"], name="fav_folder_user_parent_idx")]
 
     def __str__(self):
         return self.name

@@ -9,9 +9,12 @@ from django.conf import settings
 
 from core.exceptions import ExternalCallError
 
+# gpt-oss는 "Reasoning: low"를 지시해도 reasoning 채널만으로 수백~2000+ 토큰을 쓴다(실측
+# 확인: 반경 500m 리포트 프롬프트에서 reasoning 2835자 쓰고 max_tokens=1200에 걸려 최종
+# JSON(content)은 한 글자도 못 내고 finish_reason=length로 끊겼다). content는 reasoning과
+# 토큰을 공유하므로 reasoning 분량까지 감안해 넉넉히 잡는다.
 TEMPERATURE = 0.3
-MAX_TOKENS = 1200
-TIMEOUT_SECONDS = 120
+MAX_TOKENS = 4000
 
 
 def chat_completion(messages: list[dict]) -> str:
@@ -27,7 +30,7 @@ def chat_completion(messages: list[dict]) -> str:
         "response_format": {"type": "json_object"},
     }
     try:
-        response = httpx.post(url, json=body, timeout=TIMEOUT_SECONDS)
+        response = httpx.post(url, json=body, timeout=settings.LLM_TIMEOUT_SECONDS)
     except httpx.TimeoutException as exc:
         raise ExternalCallError(f"LLM 타임아웃: {exc}") from exc
     except httpx.HTTPError as exc:

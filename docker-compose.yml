@@ -48,6 +48,11 @@ services:
       - ./data/satellite_scenes:/app/data/satellite_scenes  # 장면별 COG(90일 보관, 결과 COG와 다름)
       - ./docker/data/cog:/app/docker/data/cog  # run_season_chain 관리 명령이 여기 쓴다(7단계)
       - ./docker/data/crime_tiles:/app/docker/data/crime_tiles  # 범죄주의구간 WMS 타일 캐시(9단계)
+    # extra_hosts로 host.docker.internal:host-gateway를 넣어봤는데(리눅스 호환 의도),
+    # Docker Desktop(Windows/Mac)은 이미 이 이름을 기본 제공해서 중복 항목(그중 IPv6는
+    # 연결 자체가 안 됨)이 생겨 오히려 이름 해석이 깨지는 걸 실측했다(worker-gpu의 Ollama
+    # 호출이 "No address associated with hostname"으로 실패). Docker Desktop에서는 빼고,
+    # 네이티브 리눅스 Docker Engine에 배포할 때만 다시 추가한다.
     depends_on:
       db:
         condition: service_healthy
@@ -107,14 +112,20 @@ services:
     build:
       context: .
       dockerfile: docker/images/django/Dockerfile
-    # 리포트 생성 큐. vLLM을 호출만 하므로 이 워커 자체는 GPU가 필요 없다(spec 9-4).
-    command: celery -A config worker -Q gpu -n worker-gpu@%h --loglevel=info
+    # 리포트 생성 큐. vLLM/Ollama를 호출만 하므로 이 워커 자체는 GPU가 필요 없다(spec 9-4).
+    # --pool=solo: 기본 prefork는 자식 프로세스를 fork로 미리 띄우는데, Docker Desktop의
+    # host.docker.internal DNS 해석이 그 fork된 자식 프로세스에서만 깨지는 걸 실측했다
+    # (docker compose exec로 새로 띄운 프로세스는 매번 멀쩡했음 — fork 이후 DNS 리졸버
+    # 상태가 안 이어지는 문제로 보인다). LLM 호출은 I/O 대기라 병렬 프로세스가 필요 없다.
+    command: celery -A config worker -Q gpu -n worker-gpu@%h --pool=solo --loglevel=info
     env_file: .env
     environment:
       POSTGRES_HOST: db
       REDIS_URL: redis://redis:6379
     volumes:
       - ./backend:/app/backend
+    # extra_hosts(host.docker.internal:host-gateway)는 뺐다 — api 서비스 주석 참고(Docker
+    # Desktop에서 중복 항목으로 이름 해석이 깨지는 걸 실측했다).
     depends_on:
       db:
         condition: service_healthy
@@ -151,8 +162,10 @@ services:
       timeout: 5s
       retries: 10
 
+  # NVIDIA GPU가 있을 때만 쓰는 선택지(기본은 로컬 Ollama, LLM_BASE_URL로 전환).
+  # docker compose --profile llm up -d vllm 로 띄우고 .env를 vLLM 쪽 값으로 바꾼다.
   vllm:
-    image: vllm/vllm-openai:latest
+    image: vllm/vllm-openai:v0.32.0
     command: --model openai/gpt-oss-20b
     ports:
       - "8002:8000"

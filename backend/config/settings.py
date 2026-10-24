@@ -143,9 +143,13 @@ SIMPLE_JWT = {
     "SIGNING_KEY": env("JWT_SIGNING_KEY"),
 }
 
-# --- Celery: 큐 3개(io/cpu/gpu). 라우팅이 없는 잡은 'celery'나 'cpu' 같은 그럴듯한 기본 큐로
-# 조용히 쌓이지 않고 즉시 에러가 나야 하므로, 기본 큐를 일부러 선언하지 않은 이름("unrouted")으로
-# 돌리고 task_create_missing_queues=False로 그 큐의 자동 생성도 막는다.
+# --- Celery: 큐 3개(io/cpu/gpu) + 라우팅 안 된 잡이 빠지는 함정 큐("unrouted", 아무 워커도
+# 구독하지 않음). 원래는 이 기본 큐 이름을 아예 선언 안 해서 디스패치 시점에 KeyError가 나게
+# 했는데, 실제로 .delay()를 호출해보니(gpt-oss 리포트 생성 실측) Celery 5.4의
+# amqp._create_task_sender가 라우팅 여부와 무관하게 task_default_queue를 미리 조회해서
+# *라우팅이 멀쩡한 잡까지 전부* KeyError로 깨졌다. 그래서 "unrouted" 큐를 실제로 선언해
+# 디스패치 자체는 살리고, 대신 core/tests/test_celery_routing.py가 등록된 모든 잡이
+# CELERY_TASK_ROUTES에 있는지 정적으로 검사해 같은 실수를 테스트 시점에 잡는다.
 CELERY_BROKER_URL = REDIS_BROKER_URL
 CELERY_RESULT_BACKEND = REDIS_RESULT_BACKEND_URL
 CELERY_TIMEZONE = TIME_ZONE
@@ -157,8 +161,9 @@ CELERY_TASK_QUEUES = (
     Queue("io"),
     Queue("cpu"),
     Queue("gpu"),
+    Queue("unrouted"),  # 아무 worker-*도 이 이름의 큐를 구독하지 않는다(docker-compose.yml)
 )
-# 이후 배치 잡은 spec 5-1 표에 맞춰 한 줄씩 추가한다. 여기 없는 잡은 위 설정 때문에 디스패치 시점에 KeyError로 바로 드러난다.
+# 이후 배치 잡은 spec 5-1 표에 맞춰 한 줄씩 추가한다. 빠뜨리면 test_celery_routing.py가 잡는다.
 CELERY_TASK_ROUTES = {
     "core.tasks.healthcheck_ping": {"queue": "io"},
     "publicdata.tasks.trade_sync": {"queue": "io"},
@@ -207,6 +212,10 @@ DATA_GO_KR_API_KEY = env("DATA_GO_KR_API_KEY", default="")
 SAFEMAP_API_KEY = env("SAFEMAP_API_KEY", default="")
 LLM_BASE_URL = env("LLM_BASE_URL", default="")
 LLM_MODEL = env("LLM_MODEL", default="")
+# 로컬 Ollama 실행은 vLLM(GPU)보다 느릴 수 있어 넉넉히 둔다. 실측(CPU, gpt-oss:20b):
+# 리포트 프롬프트 기준 약 12.6토큰/초 — max_tokens=4000이면 약 5분, 재시도 여유까지
+# 감안해 480초로 둔다(사용자 결정 180초 → 실측 후 480초로 조정).
+LLM_TIMEOUT_SECONDS = env.int("LLM_TIMEOUT_SECONDS", default=480)
 TITILER_BASE_URL = env("TITILER_BASE_URL", default="")
 
 # --- 생활안전지도 범죄주의구간(9단계) ---

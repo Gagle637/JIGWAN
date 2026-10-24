@@ -115,6 +115,20 @@ docker compose run --rm api python manage.py migrate
 docker compose up -d
 ```
 
+### 리포트 LLM(로컬 Ollama, 기본값)
+
+GPU 서버 없이 무료로 쓰려고 기본은 로컬 Ollama를 쓴다(vLLM은 NVIDIA GPU가 있을 때만 쓰는
+선택지 — [실행 방법](#실행-방법) 위 docker-compose 주석 참고).
+
+```bash
+# 호스트(Docker 바깥)에서 Ollama 설치 후:
+ollama pull gpt-oss:20b   # :cloud가 붙은 모델(gpt-oss:20b-cloud 등)은 쓰지 말 것 — 로컬이 아니라 Ollama 클라우드로 요청이 나간다
+```
+
+`.env`는 `.env.example`의 기본값(`LLM_BASE_URL=http://host.docker.internal:11434/v1`,
+`LLM_MODEL=gpt-oss:20b`)을 그대로 쓰면 된다. 로컬 실행은 느릴 수 있어 `LLM_TIMEOUT_SECONDS`
+(기본 480초, 실측 CPU 기준 max_tokens=4000 생성에 약 5분)로 제한 시간을 늘릴 수 있다.
+
 ### 기반 데이터 적재(1회)
 
 원본 파일은 `data/raw/`에 받아 둔다(git 제외). `load_regions`는 레벨별로 한 번씩 따로

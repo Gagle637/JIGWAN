@@ -30,6 +30,21 @@ def test_requires_base_url_configured(settings):
         llm_client.chat_completion([{"role": "user", "content": "hi"}])
 
 
+def test_uses_llm_timeout_seconds_setting(monkeypatch, settings):
+    settings.LLM_TIMEOUT_SECONDS = 42
+    captured = {}
+
+    def fake_post(url, json, timeout):
+        captured["timeout"] = timeout
+        return _success_response()
+
+    monkeypatch.setattr(llm_client.httpx, "post", fake_post)
+
+    llm_client.chat_completion([{"role": "user", "content": "hi"}])
+
+    assert captured["timeout"] == 42
+
+
 @respx.mock
 def test_sends_model_temperature_max_tokens_and_json_object_response_format():
     route = respx.post(CHAT_URL).mock(return_value=_success_response())
@@ -39,7 +54,7 @@ def test_sends_model_temperature_max_tokens_and_json_object_response_format():
     body = json.loads(route.calls.last.request.content)
     assert body["model"] == "openai/gpt-oss-20b"
     assert body["temperature"] == 0.3
-    assert body["max_tokens"] == 1200
+    assert body["max_tokens"] == 4000
     assert body["response_format"] == {"type": "json_object"}
 
 

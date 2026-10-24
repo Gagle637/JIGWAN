@@ -4,6 +4,7 @@ DB·GDAL에 의존하지 않아 단위 테스트가 가볍다. pyogrio가 돌려
 C(문자)는 str, N(숫자)는 float, D(날짜)는 이미 date 객체로 들어온다고 가정한다 — 단, A13은
 dbf 타입이 Character(C,10)라서 날짜가 아니라 문자열로 들어온다(직접 확인함).
 """
+import math
 from datetime import date, datetime
 from typing import Mapping
 
@@ -28,10 +29,15 @@ def _clean_str(value) -> str | None:
 
 
 def _to_float(value) -> float | None:
+    # GDAL/pyogrio는 수치 컬럼(N)의 결측값을 None이 아니라 float NaN으로 줄 때가 있다
+    # (실제 적재 중 재현됨: str(nan)="nan"이라 _clean_str을 그대로 통과해버린다).
+    if isinstance(value, float) and math.isnan(value):
+        return None
     text = _clean_str(value)
     if text is None:
         return None
-    return float(text)
+    parsed = float(text)
+    return None if math.isnan(parsed) else parsed
 
 
 def _to_int(value) -> int | None:

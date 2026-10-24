@@ -360,11 +360,11 @@ GET /api/me/favorites
 
 | 항목 | 값 |
 | --- | --- |
-| 서버 | vLLM 컨테이너, 모델 `openai/gpt-oss-20b`, OpenAI 호환 `/v1/chat/completions` ([서빙 가이드](https://developers.openai.com/cookbook/articles/gpt-oss/run-vllm)) |
+| 서버 | 기본은 로컬 Ollama(GPU 서버 없이 무료, 모델 `gpt-oss:20b`), GPU가 있으면 vLLM 컨테이너(모델 `openai/gpt-oss-20b`, [서빙 가이드](https://developers.openai.com/cookbook/articles/gpt-oss/run-vllm))로 전환 가능. 둘 다 OpenAI 호환 `/v1/chat/completions`를 `LLM_BASE_URL`로 호출(사용자 결정) |
 | 추론 수준 | low(시스템 프롬프트에 지정). 품질이 부족하면 medium과 비교 |
-| 샘플링 | temperature 0.3, max\_tokens 1,200 |
-| 출력 강제 | 요청에 7-3(기본 템플릿) 또는 7-6(맞춤)의 JSON 스키마를 `response_format`으로 전달(vLLM 구조화 출력) |
-| 동시성 | API가 gpu 큐에 넣고 워커가 vLLM에 보냄. 동시 생성 수와 대기열 상한은 P3 벤치마크로 결정 |
+| 샘플링 | temperature 0.3, max\_tokens 4,000(실측 확인: gpt-oss가 "Reasoning: low"를 지시해도 reasoning 채널만으로 수천 토큰을 쓸 수 있어, 1,200으로는 reasoning만 다 쓰고 최종 JSON(content)이 비어 finish\_reason=length로 끊겼다. reasoning과 content가 토큰을 공유하므로 넉넉히 잡는다) |
+| 출력 강제 | 요청에 `response_format: {"type": "json_object"}`만 전달하고(vLLM의 완전한 json\_schema 구조화 출력은 Ollama가 지원하는지 확인할 수 없어 안 씀), 7-3(기본 템플릿)·7-6(맞춤)의 JSON 스키마는 응답을 저장하기 전에 `reports/validator.py`로 강제 검증 |
+| 동시성 | API가 gpu 큐에 넣고 워커가 LLM 서버(Ollama/vLLM)에 보냄. 동시 생성 수와 대기열 상한은 P3 벤치마크로 결정 |
 
 ### 7-2. 프롬프트 구성
 
@@ -643,7 +643,7 @@ A0, A6·A7(특수지, PNU에 포함), A10, A19, A21, A23, A28은 적재하지 �
 | --- | --- |
 | `api` | Django + DRF(gunicorn) |
 | `beat` | Celery Beat, 단일 인스턴스만 실행 |
-| `worker-io`, `worker-cpu`, `worker-gpu` | 큐별 Celery 워커(`worker-gpu`는 vLLM을 호출만 하므로 GPU 불필요) |
+| `worker-io`, `worker-cpu`, `worker-gpu` | 큐별 Celery 워커(`worker-gpu`는 LLM 서버(Ollama/vLLM)를 호출만 하므로 GPU 불필요) |
 | `db` | PostgreSQL + PostGIS, 매일 `pg_dump` 백업 |
 | `redis` | 큐 브로커·캐시·잠금 |
 | `titiler` | COG 타일 서버, COG 아카이브 볼륨 읽기 전용 마운트 |

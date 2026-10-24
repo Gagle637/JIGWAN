@@ -1,3 +1,4 @@
+import math
 from datetime import date
 
 from buildings.mapping import map_building_row, parse_flexible_date
@@ -54,6 +55,16 @@ def test_registry_blank_forces_numeric_fields_to_none():
         "floors_below",
     ):
         assert fields[field_name] is None, field_name
+
+
+def test_numeric_nan_becomes_none():
+    # 실제 적재 중 재현됨: GDAL/pyogrio가 수치(N) 컬럼의 결측값을 None이 아니라 float NaN으로
+    # 주면 str(nan)="nan"이 _clean_str을 그대로 통과해 int(nan)에서 ValueError가 났다.
+    row = _base_row(A14=math.nan, A26=math.nan, A27=math.nan)
+    fields = map_building_row(row)
+    assert fields["total_floor_area_m2"] is None
+    assert fields["floors_above"] is None
+    assert fields["floors_below"] is None
 
 
 def test_blank_strings_become_none():

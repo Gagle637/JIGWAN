@@ -5,7 +5,8 @@ from layers.models import MapLayer
 from layers.registry import sync_cog_layer
 from satellite.composite import ALGO_VERSION
 from satellite.models import RasterProduct
-from satellite.stac_search import DAEJEON_BBOX
+
+_BBOX = (127.24, 36.18, 127.56, 36.50)
 
 pytestmark = pytest.mark.django_db
 
@@ -17,7 +18,7 @@ def _make_product(product_type, period_start, period_end, cog_path, year=2026, s
         season=season,
         period_start=period_start,
         period_end=period_end,
-        bbox=Polygon.from_bbox(DAEJEON_BBOX),
+        bbox=Polygon.from_bbox(_BBOX),
         cog_path=cog_path,
         algo_version=ALGO_VERSION,
         scene_ids=[],

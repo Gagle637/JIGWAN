@@ -11,7 +11,8 @@ import buildings.insight as insight_module
 from buildings.models import Building
 from satellite.composite import ALGO_VERSION
 from satellite.models import RasterProduct
-from satellite.stac_search import DAEJEON_BBOX
+
+_BBOX = (127.24, 36.18, 127.56, 36.50)
 
 pytestmark = pytest.mark.django_db
 
@@ -77,7 +78,7 @@ def _make_green_product(tmp_path, name="green", year=2026, season="summer", **ov
         season=season,
         period_start=f"{year}-06-01",
         period_end=f"{year}-08-31",
-        bbox=Polygon.from_bbox(DAEJEON_BBOX),
+        bbox=Polygon.from_bbox(_BBOX),
         cog_path=str(tmp_path / f"{name}.tif"),
         algo_version=ALGO_VERSION,
         scene_ids=[],
@@ -94,7 +95,7 @@ def _make_truecolor_product(tmp_path, name, year, season, **overrides):
         season=season,
         period_start=f"{year}-06-01",
         period_end=f"{year}-08-31",
-        bbox=Polygon.from_bbox(DAEJEON_BBOX),
+        bbox=Polygon.from_bbox(_BBOX),
         cog_path=str(tmp_path / f"{name}.tif"),
         algo_version=ALGO_VERSION,
         scene_ids=[],

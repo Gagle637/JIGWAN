@@ -2,6 +2,8 @@
 import logging
 from datetime import date
 
+from core.areas import get_bbox
+
 from .collect import collect_scenes
 from .composite import ALGO_VERSION
 from .models import RasterProduct, SatelliteScene
@@ -58,16 +60,17 @@ def target_seasons(today: date | None = None, count: int = TOTAL_SEASONS) -> lis
     return list(reversed(seasons))
 
 
-def dry_run_list_scenes(seasons: list[tuple[int, str]]) -> dict:
+def dry_run_list_scenes(seasons: list[tuple[int, str]], sido_code: str = "30") -> dict:
     """spec 4장 2단계: 대상 계절 전체를 STAC로 검색해 status=listed로 기록하고, 신규 장면
     수·예상 다운로드 용량을 집계한다(CDSE 한도 안에서 일정을 잡는 용도)."""
+    bbox = get_bbox(sido_code)
     existing_ids = set(SatelliteScene.objects.values_list("scene_id", flat=True))
     new_count = 0
     per_season = []
 
     for year, season in seasons:
         start, end = parse_season(f"{year}-{season}")
-        items = dedupe_latest_baseline(search_scenes(start, end))
+        items = dedupe_latest_baseline(search_scenes(start, end, bbox=bbox))
         season_new = 0
         for item in items:
             if item.id in existing_ids:
@@ -111,7 +114,7 @@ def _season_already_published(year: int, season: str) -> bool:
     return _REQUIRED_PRODUCT_TYPES <= published_types
 
 
-def run_backfill(seasons: list[tuple[int, str]]) -> list[dict]:
+def run_backfill(seasons: list[tuple[int, str]], sido_code: str = "30") -> list[dict]:
     """spec 4장 3·4·5단계: 오래된 계절부터 수집 → 합성 → 변화·기준선 → 게시 순으로 한
     계절을 끝내고 다음 계절로 넘어간다 — 한 계절을 끝내기 전에 다음 계절을 내려받지 않으므로
     디스크 최대 사용량이 한 계절분으로 제한된다.
@@ -127,9 +130,9 @@ def run_backfill(seasons: list[tuple[int, str]]) -> list[dict]:
 
         start, end = parse_season(f"{year}-{season}")
         logger.info("backfill %s-%s 수집 시작", year, season)
-        collect_summary = collect_scenes(start, end)
+        collect_summary = collect_scenes(start, end, sido_code=sido_code)
         logger.info("backfill %s-%s 수집 완료, 합성 체인 시작: %s", year, season, collect_summary)
-        chain_result = run_season_chain_sync(year, season)
+        chain_result = run_season_chain_sync(year, season, sido_code)
         results.append(
             {"season": f"{year}-{season}", "collect": collect_summary, "chain": chain_result}
         )

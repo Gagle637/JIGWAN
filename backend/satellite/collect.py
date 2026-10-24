@@ -2,6 +2,8 @@
 import logging
 from datetime import date
 
+from core.areas import get_bbox, get_grid
+
 from .ingest import ingest_date_group
 from .models import SatelliteScene
 from .stac_search import dedupe_latest_baseline, group_by_date, search_scenes
@@ -9,9 +11,12 @@ from .stac_search import dedupe_latest_baseline, group_by_date, search_scenes
 logger = logging.getLogger(__name__)
 
 
-def collect_scenes(start: date, end: date) -> dict:
-    """spec 5-1: '직전 실행 이후 등록된 장면만 다운로드·변환' — scene_id가 이미 DB에 있으면 건너뛴다."""
-    items = search_scenes(start, end)
+def collect_scenes(start: date, end: date, sido_code: str = "30") -> dict:
+    """spec 5-1: '직전 실행 이후 등록된 장면만 다운로드·변환' — scene_id가 이미 DB에 있으면
+    건너뛴다. sido_code(다지역 지원 2단계)로 검색 bbox·격자를 정한다."""
+    bbox = get_bbox(sido_code)
+    grid = get_grid(sido_code)
+    items = search_scenes(start, end, bbox=bbox)
     items = dedupe_latest_baseline(items)
     date_groups = group_by_date(items)
 
@@ -35,7 +40,7 @@ def collect_scenes(start: date, end: date) -> dict:
         if not new_items:
             continue
 
-        scenes = ingest_date_group(new_items)
+        scenes = ingest_date_group(new_items, grid=grid)
         for scene in scenes:
             tiles_covered.add(scene.mgrs_tile)
             if scene.status == SatelliteScene.Status.READY:

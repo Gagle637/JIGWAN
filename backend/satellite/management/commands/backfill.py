@@ -23,8 +23,12 @@ class Command(BaseCommand):
         parser.add_argument("--skip-trades", action="store_true")
         parser.add_argument("--skip-crime", action="store_true")
         parser.add_argument("--trade-months", type=int, default=24)
+        parser.add_argument(
+            "--sido", default="30", help="위성 수집 대상 시도 코드(기본 30=대전)"
+        )
 
     def handle(self, *args, **options):
+        sido_code = options["sido"]
         seasons = target_seasons()
         self.stdout.write(
             f"대상 계절({len(seasons)}개): {seasons[0][0]}-{seasons[0][1]} ~ "
@@ -32,7 +36,7 @@ class Command(BaseCommand):
         )
 
         self.stdout.write("\n=== 2단계: 장면 목록 작성(dry run) ===")
-        summary = dry_run_list_scenes(seasons)
+        summary = dry_run_list_scenes(seasons, sido_code=sido_code)
         for row in summary["seasons"]:
             self.stdout.write(f"  {row['season']}: {row['scenes']}개(신규 {row['new']})")
         self.stdout.write(
@@ -48,7 +52,7 @@ class Command(BaseCommand):
             return
 
         self.stdout.write("\n=== 3·4·5단계: 계절별 수집·합성·변화·기준선·게시 ===")
-        results = run_backfill(seasons)
+        results = run_backfill(seasons, sido_code=sido_code)
         for row in results:
             if row.get("skipped"):
                 self.stdout.write(f"  {row['season']}: 이미 게시됨, 건너뜀")

@@ -8,7 +8,8 @@ from django.utils import timezone
 from satellite.composite import ALGO_VERSION
 from satellite.models import RasterProduct, SatelliteScene
 from satellite.retention import cleanup_old_scene_cogs
-from satellite.stac_search import DAEJEON_BBOX
+
+_BBOX = (127.24, 36.18, 127.56, 36.50)
 
 pytestmark = pytest.mark.django_db
 
@@ -39,7 +40,7 @@ def _make_product(scene_ids, period_end, is_published=True):
         season="summer",
         period_start="2026-06-01",
         period_end=period_end,
-        bbox=Polygon.from_bbox(DAEJEON_BBOX),
+        bbox=Polygon.from_bbox(_BBOX),
         cog_path="/tmp/x.tif",
         algo_version=ALGO_VERSION,
         scene_ids=scene_ids,

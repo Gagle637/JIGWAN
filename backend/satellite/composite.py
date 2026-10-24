@@ -9,6 +9,8 @@ from django.conf import settings
 from django.contrib.gis.geos import Polygon
 from django.db import transaction
 
+from core.areas import get_bbox, get_grid
+
 from .cog import iter_grid_blocks, open_cog_writer
 from .index_scaling import INDEX_NODATA, MASK_NODATA, encode_mask, scale_index_to_int16
 from .ingest import REFLECTANCE_BANDS
@@ -16,7 +18,6 @@ from .models import RasterProduct, SatelliteScene
 from .reflectance import reflectance_to_uint16, uint16_to_reflectance
 from .scl import usable_mask
 from .seasons import parse_season
-from .stac_search import DAEJEON_BBOX
 
 logger = logging.getLogger(__name__)
 
@@ -69,7 +70,9 @@ def _read_scene_block(refl_ds, scl_ds, window) -> dict[str, np.ndarray]:
     return mask_scene_reflectance(bands, scl_block)
 
 
-def build_season_composite(scenes: list[SatelliteScene], year: int, season: str) -> dict:
+def build_season_composite(
+    scenes: list[SatelliteScene], year: int, season: str, grid: dict
+) -> dict:
     """장면 목록을 512×512 블록 단위로 읽어 ndvi·ndbi·green_mask·truecolor COG를 만든다
     (결정 사항 8-2 — 전체 스택을 메모리에 올리지 않는다)."""
     if not scenes:
@@ -91,14 +94,16 @@ def build_season_composite(scenes: list[SatelliteScene], year: int, season: str)
     valid_pixels = {"ndvi": 0, "ndbi": 0, "green_mask": 0, "truecolor": 0}
 
     try:
-        with open_cog_writer(paths["ndvi"], 1, "int16", INDEX_NODATA) as ndvi_dst, open_cog_writer(
-            paths["ndbi"], 1, "int16", INDEX_NODATA
+        with open_cog_writer(
+            paths["ndvi"], 1, "int16", INDEX_NODATA, grid=grid
+        ) as ndvi_dst, open_cog_writer(
+            paths["ndbi"], 1, "int16", INDEX_NODATA, grid=grid
         ) as ndbi_dst, open_cog_writer(
-            paths["green_mask"], 1, "uint8", MASK_NODATA
+            paths["green_mask"], 1, "uint8", MASK_NODATA, grid=grid
         ) as green_dst, open_cog_writer(
-            paths["truecolor"], 3, "uint16", 0, band_names=["B04", "B03", "B02"]
+            paths["truecolor"], 3, "uint16", 0, grid=grid, band_names=["B04", "B03", "B02"]
         ) as rgb_dst:
-            for window in iter_grid_blocks():
+            for window in iter_grid_blocks(grid):
                 ndvi_stack = []
                 ndbi_stack = []
                 rgb_stacks = {"B04": [], "B03": [], "B02": []}
@@ -148,9 +153,10 @@ def build_season_composite(scenes: list[SatelliteScene], year: int, season: str)
     }
 
 
-def run_season_composite(year: int, season: str) -> dict:
+def run_season_composite(year: int, season: str, sido_code: str = "30") -> dict:
     """status=ready 장면만 모아 합성하고, raster_product 4행(ndvi·ndbi·green_mask·truecolor)을
-    "교체"(같은 product_type·year·season·algo_version 삭제 후 재생성)로 등록한다(spec 5-2)."""
+    "교체"(같은 product_type·year·season·algo_version 삭제 후 재생성)로 등록한다(spec 5-2).
+    sido_code(다지역 지원 2단계)로 격자·bbox를 정한다."""
     period_start, period_end = parse_season(f"{year}-{season}")
     scenes = list(
         SatelliteScene.objects.filter(
@@ -160,8 +166,9 @@ def run_season_composite(year: int, season: str) -> dict:
         )
     )
 
-    result = build_season_composite(scenes, year, season)
-    bbox = Polygon.from_bbox(DAEJEON_BBOX)
+    grid = get_grid(sido_code)
+    result = build_season_composite(scenes, year, season, grid=grid)
+    bbox = Polygon.from_bbox(get_bbox(sido_code))
     bbox.srid = 4326
 
     product_types = ["ndvi", "ndbi", "green_mask", "truecolor"]

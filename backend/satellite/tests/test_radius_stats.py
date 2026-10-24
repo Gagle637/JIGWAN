@@ -10,7 +10,8 @@ from satellite.composite import ALGO_VERSION
 from satellite.index_scaling import MASK_NODATA
 from satellite.models import ChangeArea, RasterProduct, RegionStat
 from satellite.radius_stats import compute_change_stats, compute_green_stats
-from satellite.stac_search import DAEJEON_BBOX
+
+_BBOX = (127.24, 36.18, 127.56, 36.50)
 
 pytestmark = pytest.mark.django_db
 
@@ -123,7 +124,7 @@ def _make_green_product(tmp_path, name, year=2026, season="summer", **overrides)
         season=season,
         period_start=f"{year}-06-01",
         period_end=f"{year}-08-31",
-        bbox=Polygon.from_bbox(DAEJEON_BBOX),
+        bbox=Polygon.from_bbox(_BBOX),
         cog_path=str(tmp_path / f"{name}.tif"),
         algo_version=ALGO_VERSION,
         scene_ids=[],
@@ -140,7 +141,7 @@ def _make_truecolor_product(tmp_path, name, year, season, **overrides):
         season=season,
         period_start=f"{year}-06-01",
         period_end=f"{year}-08-31",
-        bbox=Polygon.from_bbox(DAEJEON_BBOX),
+        bbox=Polygon.from_bbox(_BBOX),
         cog_path=str(tmp_path / f"{name}.tif"),
         algo_version=ALGO_VERSION,
         scene_ids=[],
@@ -158,7 +159,7 @@ def _make_change_mask_product(tmp_path, name, year=2026, season="summer", compar
         period_start=f"{year}-06-01",
         period_end=f"{year}-08-31",
         compare_period=compare_period,
-        bbox=Polygon.from_bbox(DAEJEON_BBOX),
+        bbox=Polygon.from_bbox(_BBOX),
         cog_path=str(tmp_path / f"{name}.tif"),
         algo_version=ALGO_VERSION,
         scene_ids=[],

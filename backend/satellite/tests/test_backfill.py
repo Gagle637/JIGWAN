@@ -3,12 +3,21 @@ from datetime import date
 import pytest
 from django.contrib.gis.geos import Polygon
 
+from core.models import ServiceArea
 from satellite import backfill as backfill_module
 from satellite.composite import ALGO_VERSION
 from satellite.models import RasterProduct, SatelliteScene
-from satellite.stac_search import DAEJEON_BBOX
 
 pytestmark = pytest.mark.django_db
+
+_BBOX = (127.24, 36.18, 127.56, 36.50)
+
+
+@pytest.fixture(autouse=True)
+def _service_area_bbox(db):
+    ServiceArea.objects.filter(sido_code="30").update(
+        bbox_minx=_BBOX[0], bbox_miny=_BBOX[1], bbox_maxx=_BBOX[2], bbox_maxy=_BBOX[3]
+    )
 
 
 class FakeItem:
@@ -50,7 +59,7 @@ def test_dry_run_list_scenes_creates_listed_rows_and_skips_existing(monkeypatch)
         "S2B_MSIL2A_20230620T085559_N0512_R007_T52SCF_20230620T111845", "2023-06-20T08:55:59Z"
     )
 
-    def fake_search_scenes(start, end):
+    def fake_search_scenes(start, end, bbox=None):
         if start.year == 2023 and start.month in (6, 7, 8):
             return [
                 FakeItem(existing.scene_id, "2023-06-15T08:55:59Z"),
@@ -71,7 +80,7 @@ def test_dry_run_list_scenes_creates_listed_rows_and_skips_existing(monkeypatch)
 
 
 def _publish_all_product_types(year, season):
-    bbox = Polygon.from_bbox(DAEJEON_BBOX)
+    bbox = Polygon.from_bbox(_BBOX)
     for product_type in ("ndvi", "ndbi", "green_mask", "truecolor"):
         RasterProduct.objects.create(
             product_type=product_type,
@@ -96,6 +105,7 @@ def test_run_backfill_skips_season_already_fully_published(monkeypatch):
     monkeypatch.setattr(backfill_module, "collect_scenes", fail_if_called)
     monkeypatch.setattr(backfill_module, "run_season_chain_sync", fail_if_called)
 
+
     results = backfill_module.run_backfill([(2023, "summer")])
 
     assert results == [{"season": "2023-summer", "skipped": True}]
@@ -104,12 +114,14 @@ def test_run_backfill_skips_season_already_fully_published(monkeypatch):
 def test_run_backfill_processes_unfinished_season(monkeypatch):
     calls = []
     monkeypatch.setattr(
-        backfill_module, "collect_scenes", lambda start, end: {"ready": 1, "excluded": 0}
+        backfill_module,
+        "collect_scenes",
+        lambda start, end, sido_code="30": {"ready": 1, "excluded": 0},
     )
     monkeypatch.setattr(
         backfill_module,
         "run_season_chain_sync",
-        lambda year, season: calls.append((year, season)) or {"catalog_publish": "ok"},
+        lambda year, season, sido_code="30": calls.append((year, season)) or {"catalog_publish": "ok"},
     )
 
     results = backfill_module.run_backfill([(2023, "summer")])

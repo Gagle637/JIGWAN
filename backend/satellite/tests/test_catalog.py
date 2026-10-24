@@ -1,22 +1,40 @@
 import numpy as np
 import pytest
 import rasterio
-from django.conf import settings
 from django.contrib.gis.geos import Polygon
 from rasterio.transform import Affine
 
+from core.models import ServiceArea
 from satellite.catalog import VALID_RATIO_MIN, validate_and_publish
 from satellite.cog import grid_transform
 from satellite.composite import ALGO_VERSION
 from satellite.index_scaling import INDEX_NODATA
 from satellite.models import RasterProduct
-from satellite.stac_search import DAEJEON_BBOX
 
 pytestmark = pytest.mark.django_db
 
+_GRID = {
+    "crs": "EPSG:32652",
+    "resolution_m": 10,
+    "minx": 341700,
+    "miny": 4004820,
+    "maxx": 371040,
+    "maxy": 4040880,
+    "width": 2934,
+    "height": 3606,
+}
+_BBOX = (127.24, 36.18, 127.56, 36.50)
+
+
+@pytest.fixture(autouse=True)
+def _service_area_grid(db):
+    """migration 0004가 service_area "30" 행을 만들어 두지만 grid는 비어 있다 — 테스트
+    래스터와 같은 _GRID를 넣어 get_grid("30")이 쓰게 한다(다지역 지원 2단계)."""
+    ServiceArea.objects.filter(sido_code="30").update(grid=_GRID)
+
 
 def _write_raster(path, array, dtype, nodata, crs=None, transform=None):
-    grid = settings.DAEJEON_GRID
+    grid = _GRID
     profile = {
         "driver": "GTiff",
         "dtype": dtype,
@@ -24,7 +42,7 @@ def _write_raster(path, array, dtype, nodata, crs=None, transform=None):
         "width": array.shape[1],
         "height": array.shape[0],
         "crs": crs or grid["crs"],
-        "transform": transform or grid_transform(),
+        "transform": transform or grid_transform(grid),
         "nodata": nodata,
     }
     with rasterio.open(path, "w", **profile) as dst:
@@ -34,7 +52,7 @@ def _write_raster(path, array, dtype, nodata, crs=None, transform=None):
 def _make_product(tmp_path, product_type, array, dtype, nodata, name, **raster_kwargs):
     path = tmp_path / f"{name}.tif"
     _write_raster(path, array, dtype, nodata, **raster_kwargs)
-    bbox = Polygon.from_bbox(DAEJEON_BBOX)
+    bbox = Polygon.from_bbox(_BBOX)
     return RasterProduct.objects.create(
         product_type=product_type,
         year=2026,
@@ -50,12 +68,12 @@ def _make_product(tmp_path, product_type, array, dtype, nodata, name, **raster_k
 
 
 def _grid_full(value, dtype=np.int16):
-    grid = settings.DAEJEON_GRID
+    grid = _GRID
     return np.full((grid["height"], grid["width"]), value, dtype=dtype)
 
 
 def test_publishes_when_valid_ratio_above_threshold(tmp_path):
-    grid = settings.DAEJEON_GRID
+    grid = _GRID
     array = _grid_full(INDEX_NODATA)
     valid_count = int(grid["width"] * grid["height"] * 0.2)  # 20% >= 10% 기준
     flat = array.reshape(-1)
@@ -73,7 +91,7 @@ def test_publishes_when_valid_ratio_above_threshold(tmp_path):
 
 
 def test_rejects_when_valid_ratio_below_threshold(tmp_path):
-    grid = settings.DAEJEON_GRID
+    grid = _GRID
     array = _grid_full(INDEX_NODATA)
     valid_count = int(grid["width"] * grid["height"] * 0.05)  # 5% < 10% 기준
     flat = array.reshape(-1)
@@ -91,7 +109,7 @@ def test_rejects_when_valid_ratio_below_threshold(tmp_path):
 
 
 def test_rejects_value_out_of_range_for_ndvi(tmp_path):
-    grid = settings.DAEJEON_GRID
+    grid = _GRID
     array = _grid_full(INDEX_NODATA)
     valid_count = int(grid["width"] * grid["height"] * 0.5)
     flat = array.reshape(-1)
@@ -108,7 +126,7 @@ def test_rejects_value_out_of_range_for_ndvi(tmp_path):
 
 
 def test_truecolor_skips_value_range_check(tmp_path):
-    grid = settings.DAEJEON_GRID
+    grid = _GRID
     array = np.full((grid["height"], grid["width"]), 5000, dtype=np.uint16)  # 전부 유효(100%)
 
     product = _make_product(tmp_path, "truecolor", array, "uint16", 0, "truecolor_ok")
@@ -119,13 +137,13 @@ def test_truecolor_skips_value_range_check(tmp_path):
 
 
 def test_grid_mismatch_rejected(tmp_path):
-    # DAEJEON_GRID와 다른 transform(해상도 20m)의 작은 래스터
+    # _GRID와 다른 transform(해상도 20m)의 작은 래스터
     small_transform = Affine(20, 0, 300000, 0, -20, 4000000)
     array = np.full((50, 50), 3000, dtype=np.int16)
     path = tmp_path / "mismatch.tif"
     _write_raster(path, array, "int16", INDEX_NODATA, transform=small_transform)
 
-    bbox = Polygon.from_bbox(DAEJEON_BBOX)
+    bbox = Polygon.from_bbox(_BBOX)
     product = RasterProduct.objects.create(
         product_type="ndvi",
         year=2026,

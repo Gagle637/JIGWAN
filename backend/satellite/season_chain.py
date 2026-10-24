@@ -12,19 +12,19 @@ from .region_stats import run_region_stat
 logger = logging.getLogger(__name__)
 
 
-def run_season_chain_sync(year: int, season: str) -> dict:
+def run_season_chain_sync(year: int, season: str, sido_code: str = "30") -> dict:
     """반환: 단계별 결과 문자열("ok"/"skipped"/"failed: ...")을 담은 dict.
 
     season_composite가 실패·건너뜀이면 뒤 단계는 실행하지 않는다(spec 5-2: "앞 단계가
     실패하면 뒤 단계는 실행하지 않음"). change_analysis·region_stat은 서로 독립이라
     하나가 실패해도 나머지는 계속 진행한다.
     """
-    region_code = f"daejeon:{year}:{season}"
+    region_code = f"{sido_code}:{year}:{season}"
     result: dict = {}
 
     try:
         with tracked_run("season_composite", region_code, lock_ttl_seconds=3600 * 4):
-            run_season_composite(year, season)
+            run_season_composite(year, season, sido_code)
         result["season_composite"] = "ok"
     except JobSkipped:
         result["season_composite"] = "skipped"
@@ -56,7 +56,7 @@ def run_season_chain_sync(year: int, season: str) -> dict:
 
     try:
         with tracked_run("catalog_publish", region_code):
-            summary = run_catalog_publish(year, season)
+            summary = run_catalog_publish(year, season, sido_code)
         result["catalog_publish"] = "ok"
         result["catalog_summary"] = summary
     except JobSkipped:

@@ -4,12 +4,11 @@ from datetime import date, datetime
 from pystac_client import Client
 
 STAC_URL = "https://stac.dataspace.copernicus.eu/v1/"
-DAEJEON_BBOX = [127.24, 36.18, 127.56, 36.50]
 
 
-def search_scenes(start: date, end: date, max_cloud: int = 30, bbox=None) -> list:
-    """spec 2-1 예제 코드 그대로 pystac-client로 검색한다."""
-    bbox = bbox or DAEJEON_BBOX
+def search_scenes(start: date, end: date, bbox, max_cloud: int = 30) -> list:
+    """spec 2-1 예제 코드 그대로 pystac-client로 검색한다. bbox는 core.areas.get_bbox(sido_code)
+    (EPSG:4326, 다지역 지원 2단계)로 호출부가 넘긴다."""
     catalog = Client.open(STAC_URL)
     search = catalog.search(
         collections=["sentinel-2-l2a"],

@@ -1,11 +1,11 @@
-"""DAEJEON_GRID로 reproject + 타일 합치기(coalesce) + 원자적 COG 쓰기(결정 사항 10·11·12)."""
+"""grid(지역별 고정 격자, core.areas.get_grid)로 reproject + 타일 합치기(coalesce) +
+원자적 COG 쓰기(결정 사항 10·11·12)."""
 import os
 from contextlib import contextmanager
 from pathlib import Path
 
 import numpy as np
 import rasterio
-from django.conf import settings
 from rasterio.enums import Resampling
 from rasterio.shutil import copy as _rio_copy
 from rasterio.transform import Affine
@@ -15,8 +15,7 @@ from rasterio.windows import Window
 BLOCK_SIZE = 512
 
 
-def grid_transform() -> Affine:
-    grid = settings.DAEJEON_GRID
+def grid_transform(grid: dict) -> Affine:
     return Affine(grid["resolution_m"], 0, grid["minx"], 0, -grid["resolution_m"], grid["maxy"])
 
 
@@ -26,18 +25,18 @@ def reproject_band_to_grid(
     source_crs,
     resampling: Resampling,
     nodata,
+    grid: dict,
 ) -> np.ndarray:
-    """타일 하나의 밴드 배열을 DAEJEON_GRID(고정 격자)로 reproject한다. 격자가 덮지 못하는
+    """타일 하나의 밴드 배열을 grid(지역별 고정 격자)로 reproject한다. 격자가 덮지 못하는
     칸은 nodata — 다음 단계(계절 합성)가 화소 정렬을 전제하므로 모든 장면이 같은
     transform·shape를 갖게 된다."""
-    grid = settings.DAEJEON_GRID
     destination = np.full((grid["height"], grid["width"]), nodata, dtype=source_array.dtype)
     reproject(
         source=source_array,
         destination=destination,
         src_transform=source_transform,
         src_crs=source_crs,
-        dst_transform=grid_transform(),
+        dst_transform=grid_transform(grid),
         dst_crs=grid["crs"],
         resampling=resampling,
         src_nodata=nodata,
@@ -50,21 +49,20 @@ def coalesce(*grids: np.ndarray, nodata) -> np.ndarray:
     """여러 타일의 격자를 합친다 — 먼저 나온 것 중 유효한(=nodata가 아닌) 값을 채택한다.
     반사율·SCL 둘 다 nodata=0이라 같은 함수를 그대로 쓴다(결정 사항 12)."""
     merged = grids[0].copy()
-    for grid in grids[1:]:
+    for g in grids[1:]:
         missing = merged == nodata
-        merged[missing] = grid[missing]
+        merged[missing] = g[missing]
     return merged
 
 
 def write_cog_atomic(
-    data: np.ndarray, path, nodata, band_names: list[str] | None = None
+    data: np.ndarray, path, nodata, grid: dict, band_names: list[str] | None = None
 ) -> None:
     """임시 경로에 쓴 뒤 rename한다 — 중간에 죽어도 반쯤 쓴 COG가 안 남는다(CLAUDE.md 배치 규칙)."""
     path = Path(path)
     path.parent.mkdir(parents=True, exist_ok=True)
     tmp_path = path.with_name(path.name + ".tmp")
 
-    grid = settings.DAEJEON_GRID
     count = 1 if data.ndim == 2 else data.shape[0]
     profile = {
         "driver": "COG",
@@ -73,7 +71,7 @@ def write_cog_atomic(
         "width": grid["width"],
         "height": grid["height"],
         "crs": grid["crs"],
-        "transform": grid_transform(),
+        "transform": grid_transform(grid),
         "nodata": nodata,
     }
     try:
@@ -91,9 +89,8 @@ def write_cog_atomic(
             tmp_path.unlink()
 
 
-def iter_grid_blocks(block_size: int = BLOCK_SIZE):
-    """DAEJEON_GRID를 block_size×block_size rasterio.windows.Window로 순회한다(결정 사항 8-2)."""
-    grid = settings.DAEJEON_GRID
+def iter_grid_blocks(grid: dict, block_size: int = BLOCK_SIZE):
+    """grid를 block_size×block_size rasterio.windows.Window로 순회한다(결정 사항 8-2)."""
     for row_off in range(0, grid["height"], block_size):
         height = min(block_size, grid["height"] - row_off)
         for col_off in range(0, grid["width"], block_size):
@@ -102,7 +99,9 @@ def iter_grid_blocks(block_size: int = BLOCK_SIZE):
 
 
 @contextmanager
-def open_cog_writer(path, count: int, dtype, nodata, band_names: list[str] | None = None):
+def open_cog_writer(
+    path, count: int, dtype, nodata, grid: dict, band_names: list[str] | None = None
+):
     """블록 단위로 ``dst.write(data, window=...)``할 수 있는 COG 작성기를 연다.
 
     GDAL COG 드라이버는 CreateCopy 전용이라 증분 쓰기(Create)를 지원하지 않는다 — 그래서
@@ -115,7 +114,6 @@ def open_cog_writer(path, count: int, dtype, nodata, band_names: list[str] | Non
     tmp_tiff = path.with_name(path.name + ".tiled.tmp.tif")
     tmp_cog = path.with_name(path.name + ".tmp")
 
-    grid = settings.DAEJEON_GRID
     profile = {
         "driver": "GTiff",
         "dtype": dtype,
@@ -123,7 +121,7 @@ def open_cog_writer(path, count: int, dtype, nodata, band_names: list[str] | Non
         "width": grid["width"],
         "height": grid["height"],
         "crs": grid["crs"],
-        "transform": grid_transform(),
+        "transform": grid_transform(grid),
         "nodata": nodata,
         "tiled": True,
         "blockxsize": BLOCK_SIZE,

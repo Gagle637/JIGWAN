@@ -2,10 +2,29 @@ from datetime import date
 
 import pytest
 
+from core.models import ServiceArea
 from satellite import collect as collect_module
 from satellite.models import SatelliteScene
 
 pytestmark = pytest.mark.django_db
+
+_GRID = {
+    "crs": "EPSG:32652",
+    "resolution_m": 10,
+    "minx": 341700,
+    "miny": 4004820,
+    "maxx": 371040,
+    "maxy": 4040880,
+    "width": 2934,
+    "height": 3606,
+}
+
+
+@pytest.fixture(autouse=True)
+def _service_area(db):
+    ServiceArea.objects.filter(sido_code="30").update(
+        bbox_minx=127.24, bbox_miny=36.18, bbox_maxx=127.56, bbox_maxy=36.50, grid=_GRID
+    )
 
 
 class FakeItem:
@@ -44,13 +63,13 @@ def test_listed_scene_is_not_treated_as_already_collected(monkeypatch):
     )
 
     monkeypatch.setattr(
-        collect_module, "search_scenes", lambda start, end: [listed_item, done_item]
+        collect_module, "search_scenes", lambda start, end, bbox=None: [listed_item, done_item]
     )
     ingested_ids = []
     monkeypatch.setattr(
         collect_module,
         "ingest_date_group",
-        lambda items: ingested_ids.extend(i.id for i in items) or [],
+        lambda items, grid=None: ingested_ids.extend(i.id for i in items) or [],
     )
 
     result = collect_module.collect_scenes(date(2026, 6, 1), date(2026, 8, 31))

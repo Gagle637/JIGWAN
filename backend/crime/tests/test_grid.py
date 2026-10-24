@@ -1,4 +1,18 @@
+import pytest
+
+from core.models import ServiceArea
 from crime import grid
+
+pytestmark = pytest.mark.django_db
+
+
+@pytest.fixture(autouse=True)
+def _service_area_bbox(db):
+    """core.areas.get_bbox("30")이 DB를 보게 됐으므로(다지역 지원 2단계), 테스트용 대전
+    bbox를 service_area에 넣어 둔다."""
+    ServiceArea.objects.filter(sido_code="30").update(
+        bbox_minx=127.24, bbox_miny=36.18, bbox_maxx=127.56, bbox_maxy=36.50
+    )
 
 
 def test_base_cells_cover_daejeon_bbox_with_2km_cells():

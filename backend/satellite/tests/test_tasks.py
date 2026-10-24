@@ -38,7 +38,7 @@ def test_build_season_chain_passes_explicit_args():
     canvas = build_season_chain(2026, "summer")
     sigs = _all_signatures(canvas)
     for sig in sigs:
-        assert sig.args == ("daejeon:2026:summer", 2026, "summer")
+        assert sig.args == ("30:2026:summer", 2026, "summer", "30")
 
 
 def test_season_just_ended_winter_is_recorded_under_previous_year():

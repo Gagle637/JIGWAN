@@ -1,7 +1,6 @@
 import numpy as np
 import pytest
 import rasterio
-from django.conf import settings
 
 from satellite import ingest as ingest_module
 from satellite.cog import grid_transform
@@ -11,6 +10,17 @@ pytestmark = pytest.mark.django_db
 
 BAND_FILES = ["B02_10m", "B03_10m", "B04_10m", "B08_10m", "B11_20m"]
 
+_GRID = {
+    "crs": "EPSG:32652",
+    "resolution_m": 10,
+    "minx": 341700,
+    "miny": 4004820,
+    "maxx": 371040,
+    "maxy": 4040880,
+    "width": 2934,
+    "height": 3606,
+}
+
 
 class FakeItem:
     def __init__(self, item_id: str, dt_iso: str, cloud: float = 10.0):
@@ -19,7 +29,7 @@ class FakeItem:
 
 
 def _write_band(path, array):
-    grid = settings.DAEJEON_GRID
+    grid = _GRID
     profile = {
         "driver": "GTiff",
         "dtype": array.dtype,
@@ -27,17 +37,17 @@ def _write_band(path, array):
         "width": grid["width"],
         "height": grid["height"],
         "crs": grid["crs"],
-        "transform": grid_transform(),
+        "transform": grid_transform(grid),
     }
     with rasterio.open(path, "w", **profile) as dst:
         dst.write(array, 1)
 
 
 def _make_tile_files(tmp_path, name: str, dn_value: int, scl_value: int) -> dict:
-    """DAEJEON_GRID와 똑같은 크기·transform의 가짜 밴드 파일(전체가 같은 값)을 만든다 —
+    """_GRID와 똑같은 크기·transform의 가짜 밴드 파일(전체가 같은 값)을 만든다 —
     실제 밴드 파일 포맷(JP2)이 아니라 rasterio가 읽을 수 있는 GTiff지만, ingest.py의
     _read_band는 포맷을 가리지 않는다."""
-    grid = settings.DAEJEON_GRID
+    grid = _GRID
     shape = (grid["height"], grid["width"])
     dn_array = np.full(shape, dn_value, dtype=np.uint16)
     scl_array = np.full(shape, scl_value, dtype=np.uint8)
@@ -97,7 +107,7 @@ def test_two_tiles_same_date_share_cog_path_and_use_own_offsets(tmp_path, monkey
     }
     _patch_download_and_mtd(monkeypatch, files_by_key, mtd_by_key, tmp_path)
 
-    scenes = ingest_module.ingest_date_group([tile_a, tile_b])
+    scenes = ingest_module.ingest_date_group([tile_a, tile_b], _GRID)
 
     assert len(scenes) == 2
     assert scenes[0].cog_path == scenes[1].cog_path
@@ -135,7 +145,7 @@ def test_upgrades_existing_listed_row_instead_of_duplicating(tmp_path, monkeypat
     }
     _patch_download_and_mtd(monkeypatch, files_by_key, mtd_by_key, tmp_path)
 
-    scenes = ingest_module.ingest_date_group([item])
+    scenes = ingest_module.ingest_date_group([item], _GRID)
 
     assert SatelliteScene.objects.filter(scene_id=item.id).count() == 1
     assert scenes[0].status == SatelliteScene.Status.READY
@@ -155,7 +165,7 @@ def test_low_valid_ratio_marks_excluded(tmp_path, monkeypatch):
     }
     _patch_download_and_mtd(monkeypatch, files_by_key, mtd_by_key, tmp_path)
 
-    scenes = ingest_module.ingest_date_group([item])
+    scenes = ingest_module.ingest_date_group([item], _GRID)
 
     assert scenes[0].valid_ratio == 0.0
     assert scenes[0].status == SatelliteScene.Status.EXCLUDED

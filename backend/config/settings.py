@@ -197,19 +197,6 @@ RESULT_COG_DIR = env(
     "RESULT_COG_DIR", default=str(BASE_DIR.parent / "docker" / "data" / "cog")
 )
 
-# 대전 bbox([127.24,36.18,127.56,36.50])를 EPSG:32652로 변환 후 60m 배수로 바깥쪽 스냅해 미리 계산한
-# 고정 격자(6단계 플랜). 모든 장면 COG(반사율·SCL)가 이 격자로 reproject돼 transform·shape가 같아진다.
-DAEJEON_GRID = {
-    "crs": "EPSG:32652",
-    "resolution_m": 10,
-    "minx": 341700,
-    "miny": 4004820,
-    "maxx": 371040,
-    "maxy": 4040880,
-    "width": 2934,
-    "height": 3606,
-}
-
 # --- 외부 서비스(이번 단계는 미사용, 이후 단계에서 참조) ---
 CDSE_S3_ACCESS_KEY = env("CDSE_S3_ACCESS_KEY", default="")
 CDSE_S3_SECRET_KEY = env("CDSE_S3_SECRET_KEY", default="")

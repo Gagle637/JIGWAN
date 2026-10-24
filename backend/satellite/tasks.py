@@ -17,59 +17,65 @@ LOOKBACK_DAYS = 30
 
 @shared_task(bind=True, base=TrackedTask, max_retries=3)
 @tracked_job(job_name="satellite_collect", lock_ttl_seconds=3600 * 6)
-def satellite_collect(self, region_code="daejeon"):
-    """spec 5-1: 5일마다 02:00, io 큐. 직전 실행 이후 등록된 장면만 처리."""
+def satellite_collect(self, region_code="30"):
+    """spec 5-1: 5일마다 02:00, io 큐. 직전 실행 이후 등록된 장면만 처리.
+
+    region_code 기본값 "30"(대전)은 다지역 지원 7단계에서 지역 반복으로 바꿀 때 없앤다
+    (docs/tasks/multi_area.md 7단계) — 지금은 이미 등록된 Beat 정기 실행이 인자 없이
+    호출하기 때문에 남겨 둔다."""
     today = date.today()
-    return collect_scenes(today - timedelta(days=LOOKBACK_DAYS), today)
+    return collect_scenes(today - timedelta(days=LOOKBACK_DAYS), today, sido_code=region_code)
 
 
-def _region_code(year: int, season: str) -> str:
-    """index_run/Redis 잠금 키에 year·season을 실어 보낸다(core.jobs 스키마는 그대로 둠, 6단계
-    플랜 결정 사항 2)."""
-    return f"daejeon:{year}:{season}"
+def _region_code(year: int, season: str, sido_code: str = "30") -> str:
+    """index_run/Redis 잠금 키에 sido_code·year·season을 실어 보낸다."""
+    return f"{sido_code}:{year}:{season}"
 
 
 @shared_task(bind=True, base=TrackedTask, max_retries=3)
 @tracked_job(job_name="season_composite", lock_ttl_seconds=3600 * 4)
-def season_composite(self, region_code, year, season):
-    return run_season_composite(year, season)
+def season_composite(self, region_code, year, season, sido_code="30"):
+    return run_season_composite(year, season, sido_code)
 
 
 @shared_task(bind=True, base=TrackedTask, max_retries=3)
 @tracked_job(job_name="change_analysis", lock_ttl_seconds=3600 * 2)
-def change_analysis(self, region_code, year, season):
+def change_analysis(self, region_code, year, season, sido_code="30"):
     return run_change_analysis(year, season)
 
 
 @shared_task(bind=True, base=TrackedTask, max_retries=3)
 @tracked_job(job_name="region_stat", lock_ttl_seconds=3600)
-def region_stat_task(self, region_code, year, season):
+def region_stat_task(self, region_code, year, season, sido_code="30"):
     return run_region_stat(year, season)
 
 
 @shared_task(bind=True, base=TrackedTask, max_retries=3)
 @tracked_job(job_name="catalog_publish", lock_ttl_seconds=3600)
-def catalog_publish(self, region_code, year, season):
-    return run_catalog_publish(year, season)
+def catalog_publish(self, region_code, year, season, sido_code="30"):
+    return run_catalog_publish(year, season, sido_code)
 
 
 @shared_task(bind=True, base=TrackedTask, max_retries=3)
 @tracked_job(job_name="cleanup_scene_cogs", lock_ttl_seconds=3600)
-def cleanup_scene_cogs_task(self, region_code="daejeon"):
+def cleanup_scene_cogs_task(self, region_code="30"):
     """spec 5-4: 장면별 COG는 계절 합성에 쓰인 지 90일 지나면 삭제. 주 1회(Beat, cpu 큐)."""
     return cleanup_old_scene_cogs()
 
 
-def build_season_chain(year: int, season: str):
+def build_season_chain(year: int, season: str, sido_code: str = "30"):
     """season_composite → group(change_analysis, region_stat) → catalog_publish(spec 5-2).
 
     전부 immutable(.si()) 서명이라 앞 단계 반환값이나 group 결과 리스트가 다음 태스크로
     전달되지 않는다 — 체인은 순서·실패 전파만 담당한다(결정 사항 3)."""
-    rc = _region_code(year, season)
+    rc = _region_code(year, season, sido_code)
     return chain(
-        season_composite.si(rc, year, season),
-        group(change_analysis.si(rc, year, season), region_stat_task.si(rc, year, season)),
-        catalog_publish.si(rc, year, season),
+        season_composite.si(rc, year, season, sido_code),
+        group(
+            change_analysis.si(rc, year, season, sido_code),
+            region_stat_task.si(rc, year, season, sido_code),
+        ),
+        catalog_publish.si(rc, year, season, sido_code),
     )
 
 

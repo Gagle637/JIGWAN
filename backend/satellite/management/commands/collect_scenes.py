@@ -17,6 +17,7 @@ class Command(BaseCommand):
         parser.add_argument("--season", default=None, help="예: 2026-summer")
         parser.add_argument("--start", default=None, help="YYYY-MM-DD")
         parser.add_argument("--end", default=None, help="YYYY-MM-DD")
+        parser.add_argument("--sido", default="30", help="시도 코드(기본 30=대전)")
 
     def handle(self, *args, **options):
         if options["season"]:
@@ -27,11 +28,14 @@ class Command(BaseCommand):
         else:
             raise CommandError("--season 또는 --start/--end를 지정해야 합니다.")
 
-        self.stdout.write(f"수집 기간: {start} ~ {end}")
+        sido_code = options["sido"]
+        self.stdout.write(f"수집 기간: {start} ~ {end} (지역: {sido_code})")
 
         try:
-            with tracked_run("satellite_backfill", "daejeon", lock_ttl_seconds=3600 * 12):
-                summary = collect_scenes(start, end)
+            with tracked_run(
+                "satellite_backfill", sido_code, lock_ttl_seconds=3600 * 12
+            ):
+                summary = collect_scenes(start, end, sido_code=sido_code)
         except JobSkipped:
             self.stdout.write(self.style.WARNING("다른 수집이 실행 중이라 건너뜀"))
             return

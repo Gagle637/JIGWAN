@@ -16,8 +16,10 @@ class Command(BaseCommand):
             required=True,
             help="예: --season 2026-summer (여러 번 줄 수 있음)",
         )
+        parser.add_argument("--sido", default="30", help="시도 코드(기본 30=대전)")
 
     def handle(self, *args, **options):
+        sido_code = options["sido"]
         for season_str in options["season"]:
             try:
                 year_str, season_name = season_str.split("-", 1)
@@ -25,8 +27,8 @@ class Command(BaseCommand):
             except ValueError as exc:
                 raise CommandError(f"잘못된 계절 문자열: {season_str}") from exc
 
-            self.stdout.write(f"=== {season_str} 체인 실행 ===")
-            result = run_season_chain_sync(year, season_name)
+            self.stdout.write(f"=== {season_str} 체인 실행(지역: {sido_code}) ===")
+            result = run_season_chain_sync(year, season_name, sido_code)
             for step, outcome in result.items():
                 if outcome == "ok":
                     self.stdout.write(self.style.SUCCESS(f"  {step}: ok"))

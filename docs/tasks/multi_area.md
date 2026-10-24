@@ -102,9 +102,14 @@ RasterProduct.region_code 사용), `backend/satellite/ingest.py`, `backend/satel
 
 ### 7. 잠금·index_run 지역화 + 정기 배치 다지역화
 
+**위성 쪽은 2단계에서 완료.** `backend/satellite/tasks.py`·`season_chain.py`·
+`management/commands/backfill.py`·`collect_scenes.py`·`run_season_chain.py`는 이미
+`sido_code` 파라미터(기본값 "30")와 `region_code = f"{sido_code}:{year}:{season}"` 형태의
+index_run 키로 바꿔 뒀다 — 이 단계에서 남은 건 그 "30" 기본값을
+`ServiceArea.objects.filter(enabled=True)` 반복으로 바꾸는 것뿐이다.
+
 **파일**: `backend/crime/collect.py`·`management/commands/run_safety_sync.py`·
-`probe_crime_feature_cap.py`, `backend/satellite/tasks.py`·`season_chain.py`·
-`management/commands/backfill.py`·`collect_scenes.py`, `backend/publicdata/tasks.py`·
+`probe_crime_feature_cap.py`, `backend/satellite/tasks.py`(기본값 제거), `backend/publicdata/tasks.py`·
 `backfill_trades.py` — `tracked_run`/`tracked_job`에 넘기는 `region_code="daejeon"` 고정 문자열을
 시도 코드 기반으로. `trade_sync`·`satellite_collect`·계절 체인·`safety_sync`의 Celery Beat
 주기 작업이 `ServiceArea.objects.filter(enabled=True)`를 돌며 지역별로 실행되게.

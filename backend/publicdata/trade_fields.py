@@ -193,12 +193,14 @@ def normalize_sh_rent(raw: dict) -> dict:
 
 
 # 서비스명(spec 8-7) -> 정규화 함수. 수집 순서는 sync.py에서 아파트 매매를 명시적으로 먼저 돌린다.
+# RTMSDataSvcRHTrade는 국토부가 RTMSDataSvcRHTrade2로 올려서 예전 이름은 더 이상 등록돼 있지
+# 않다(실측 확인: SERVICE_KEY_IS_NOT_REGISTERED_ERROR, 공공데이터포털에서 현재 Base URL 재확인).
 SERVICES = {
     "RTMSDataSvcAptTradeDev": normalize_apt_trade,
     "RTMSDataSvcAptRent": normalize_apt_rent,
     "RTMSDataSvcOffiTrade": normalize_offi_trade,
     "RTMSDataSvcOffiRent": normalize_offi_rent,
-    "RTMSDataSvcRHTrade": normalize_rh_trade,
+    "RTMSDataSvcRHTrade2": normalize_rh_trade,
     "RTMSDataSvcRHRent": normalize_rh_rent,
     "RTMSDataSvcSHTrade": normalize_sh_trade,
     "RTMSDataSvcSHRent": normalize_sh_rent,

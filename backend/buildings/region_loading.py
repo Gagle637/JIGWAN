@@ -141,7 +141,9 @@ def load_regions(
         pad_to = LEVEL_PAD_TO.get(level)
 
     vsi_path = resolve_vsi_path(path, level)
-    gdf = pyogrio.read_dataframe(vsi_path)
+    # encoding 없이 읽으면 DBF 텍스트(이름)가 깨진다(실측 확인: '효동'이 'È¿µ¿'로 들어감).
+    # load_buildings와 같은 원본 계열(CP949, 국가공간정보포털)이라 같은 인코딩을 쓴다.
+    gdf = pyogrio.read_dataframe(vsi_path, encoding="cp949")
     if len(gdf) == 0:
         raise ValueError(f"{path}에서 읽은 행이 없습니다.")
 

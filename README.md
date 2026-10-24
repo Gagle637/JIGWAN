@@ -131,13 +131,16 @@ ollama pull gpt-oss:20b   # :cloud가 붙은 모델(gpt-oss:20b-cloud 등)은 �
 
 ### 기반 데이터 적재(1회)
 
-원본 파일은 `data/raw/`에 받아 둔다(git 제외). `load_regions`는 레벨별로 한 번씩 따로
-실행한다. `--source-srid`는 실제로 받은 shp 파일의 좌표계를 넣는다(파일의 .prj를 확인).
+원본 파일은 `data/raw/`에 받아 둔다(git 제외). 국가공간정보포털 `AL_D001_00`(전국 행정경계)은
+바깥 zip 안에 레벨별 zip(SIG=시군구, EMD=법정동)이 중첩돼 있는데, `load_regions`가 그 구조를
+그대로 읽는다(안쪽까지 따로 풀 필요 없음). `--source-srid`는 생략하면 `.prj`에서 자동으로
+읽는다. `sigungu` → `bjd` 순으로 먼저 실행하고, `sido`는 파일 없이 마지막에 실행한다(이미
+적재된 시군구를 union해서 만든다 — 시도 경계 원본 파일이 따로 없어도 된다).
 
 ```bash
-docker compose exec api python manage.py load_regions data/raw/<시도_경계>.shp --level sido --source-srid <원본 SRID>
-docker compose exec api python manage.py load_regions data/raw/<시군구_경계>.shp --level sigungu --source-srid <원본 SRID>
-docker compose exec api python manage.py load_regions data/raw/<법정동_경계>.shp --level bjd --source-srid <원본 SRID>
+docker compose exec api python manage.py load_regions data/raw/AL_D001_00_20261009.zip --level sigungu
+docker compose exec api python manage.py load_regions data/raw/AL_D001_00_20261009.zip --level bjd
+docker compose exec api python manage.py load_regions --level sido   # path 없이, sigungu를 union
 docker compose exec api python manage.py load_buildings   # data/raw/AL_D010_30_*.zip 중 최신 파일을 자동으로 찾음
 docker compose exec api python manage.py seed_map_layers
 docker compose exec api python manage.py probe_crime_feature_cap   # .env의 CRIME_FEATURE_CAP·CRIME_DATA_PERIOD 채운 뒤 재시작

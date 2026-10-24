@@ -43,6 +43,9 @@ INSTALLED_APPS = [
 
 MIDDLEWARE = [
     "django.middleware.security.SecurityMiddleware",
+    # gunicorn은 정적 파일을 안 서빙한다(runserver와 다름) — admin CSS/JS가 하나도
+    # 안 불러와지는 걸로 실측 확인됨. WhiteNoise가 STATIC_ROOT를 직접 서빙한다.
+    "whitenoise.middleware.WhiteNoiseMiddleware",
     "corsheaders.middleware.CorsMiddleware",
     "django.contrib.sessions.middleware.SessionMiddleware",
     "django.middleware.common.CommonMiddleware",
@@ -100,6 +103,9 @@ USE_I18N = True
 USE_TZ = True
 
 STATIC_URL = "static/"
+# backend/ 전체가 ./backend:/app/backend로 볼륨 마운트돼 있어, BASE_DIR 밑에 두면 collectstatic
+# 결과가 호스트 저장소에까지 쌓인다 — 마운트 밖(BASE_DIR.parent)에 둬서 컨테이너 안에만 남긴다.
+STATIC_ROOT = BASE_DIR.parent / "staticfiles"
 DEFAULT_AUTO_FIELD = "django.db.models.BigAutoField"
 
 # --- CORS ---

@@ -264,6 +264,15 @@ def load_sido_from_sigungu_union(sido_prefix: str, source_date: date | None) -> 
             {"code": sido_prefix, "prefix": f"{sido_prefix}%"},
         )
 
+    # service_area에 이 시도가 등록돼 있으면 grid·bbox를 계산해 둔다(docs/tasks/multi_area.md
+    # 1단계). 이미 계산돼 있으면 compute_and_store_grid가 멱등하게 건너뛴다. service_area에
+    # 아직 없는 시도(= 서비스 대상이 아닌 지역을 그냥 적재만 해 본 경우)는 조용히 건너뛴다.
+    from core.areas import compute_and_store_grid
+    from core.models import ServiceArea
+
+    if ServiceArea.objects.filter(sido_code=sido_prefix).exists():
+        compute_and_store_grid(sido_prefix)
+
     return {
         "total_rows": 1,
         "level": "sido",

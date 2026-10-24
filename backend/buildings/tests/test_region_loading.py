@@ -11,6 +11,7 @@ from buildings.region_loading import (
     pad_code,
     resolve_vsi_path,
 )
+from core.models import ServiceArea
 
 
 def test_pad_code_pads_short_codes():
@@ -229,3 +230,29 @@ def test_load_sido_from_sigungu_union_raises_when_names_disagree():
 
     with pytest.raises(ValueError, match="시도 이름"):
         load_sido_from_sigungu_union("30", source_date=None)
+
+
+@pytest.mark.django_db
+def test_load_sido_from_sigungu_union_computes_grid_when_service_area_registered():
+    # "30"은 데이터 마이그레이션이 이미 시딩해 둔다(core/migrations/0004) — 중복 생성 방지.
+    ServiceArea.objects.get_or_create(sido_code="30", defaults={"name": "대전광역시"})
+    Region.objects.create(
+        region_code="30110", level="sigungu", name="대전광역시 동구", geom=_square_wkt(127.40, 36.30)
+    )
+
+    load_sido_from_sigungu_union("30", source_date=None)
+
+    assert ServiceArea.objects.get(sido_code="30").grid is not None
+
+
+@pytest.mark.django_db
+def test_load_sido_from_sigungu_union_skips_grid_when_no_service_area():
+    # service_area에 없는 시도를 그냥 적재만 해 본 경우 — 에러 없이 조용히 건너뛴다.
+    Region.objects.create(
+        region_code="11110", level="sigungu", name="서울특별시 종로구", geom=_square_wkt(126.97, 37.57)
+    )
+
+    result = load_sido_from_sigungu_union("11", source_date=None)
+
+    assert result["total_rows"] == 1
+    assert not ServiceArea.objects.filter(sido_code="11").exists()

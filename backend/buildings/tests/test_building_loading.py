@@ -1,10 +1,21 @@
+import zipfile
 from datetime import date
+from pathlib import Path
 
 import pytest
 
 from buildings import building_loading
 from buildings.models import Building
 from core.jobs import SkipJob
+
+
+def _make_zip(path: Path, shp_name: str | None = None) -> Path:
+    """load_buildings가 실제로 zip 목록에서 .shp를 찾으므로(다지역 지원 4단계 보강), 테스트용
+    zip도 진짜 zip이어야 한다 — pyogrio는 모킹하므로 .shp 안의 내용은 비워도 된다."""
+    with zipfile.ZipFile(path, "w") as zf:
+        zf.writestr(shp_name or (path.stem + ".shp"), b"")
+    return path
+
 
 # ---- resolve_building_zip_path: 파일시스템만, DB 불필요 ----
 
@@ -34,6 +45,39 @@ def test_resolve_building_zip_path_no_candidates_raises(tmp_path, monkeypatch):
     monkeypatch.setattr(building_loading, "DATA_RAW_DIR", tmp_path)
     with pytest.raises(FileNotFoundError):
         building_loading.resolve_building_zip_path(None)
+
+
+# ---- resolve_vsizip_shp_path: zip 파일명이 아니라 실제 안의 .shp를 찾아야 한다 ----
+
+
+def test_resolve_vsizip_shp_path_finds_shp_even_when_zip_filename_has_extra_suffix(tmp_path):
+    """다운로드하며 zip 파일명에 " (1)" 같은 접미사가 붙어도(실제로 재현됨) 안의 .shp
+    이름은 원래 그대로이므로, zip 파일명으로 .shp 이름을 추정하면 안 된다."""
+    zip_path = tmp_path / "AL_D010_30_20261009 (1).zip"
+    _make_zip(zip_path, shp_name="AL_D010_30_20261009.shp")
+
+    vsi_path = building_loading.resolve_vsizip_shp_path(zip_path)
+
+    assert vsi_path == f"/vsizip/{zip_path.resolve()}/AL_D010_30_20261009.shp"
+
+
+def test_resolve_vsizip_shp_path_raises_when_zip_has_no_shp(tmp_path):
+    zip_path = tmp_path / "empty.zip"
+    with zipfile.ZipFile(zip_path, "w") as zf:
+        zf.writestr("readme.txt", b"")
+
+    with pytest.raises(ValueError, match=r"\.shp"):
+        building_loading.resolve_vsizip_shp_path(zip_path)
+
+
+def test_resolve_vsizip_shp_path_raises_when_zip_has_more_than_one_shp(tmp_path):
+    zip_path = tmp_path / "ambiguous.zip"
+    with zipfile.ZipFile(zip_path, "w") as zf:
+        zf.writestr("a.shp", b"")
+        zf.writestr("b.shp", b"")
+
+    with pytest.raises(ValueError, match=r"\.shp"):
+        building_loading.resolve_vsizip_shp_path(zip_path)
 
 
 # ---- assign_building_keys: 순수 함수, DB 불필요 ----
@@ -133,8 +177,7 @@ def test_load_buildings_skips_when_source_date_unchanged(monkeypatch, tmp_path):
 
     monkeypatch.setattr("pyogrio.read_dataframe", lambda *a, **k: _tiny_gdf(existing_date))
 
-    zip_path = tmp_path / "AL_D010_30_20261006.zip"
-    zip_path.touch()
+    zip_path = _make_zip(tmp_path / "AL_D010_30_20261006.zip")
 
     with pytest.raises(SkipJob):
         building_loading.load_buildings(zip_path)
@@ -147,8 +190,7 @@ def test_load_buildings_upsert_preserves_id_and_soft_deletes_missing(monkeypatch
     monkeypatch.setattr(
         "pyogrio.read_dataframe", lambda *a, **k: _tiny_gdf(date(2026, 1, 1))
     )
-    zip1 = tmp_path / "AL_D010_30_20260101.zip"
-    zip1.touch()
+    zip1 = _make_zip(tmp_path / "AL_D010_30_20260101.zip")
     building_loading.load_buildings(zip1)
 
     building = Building.objects.get(building_key="GISID001")
@@ -161,8 +203,7 @@ def test_load_buildings_upsert_preserves_id_and_soft_deletes_missing(monkeypatch
             date(2026, 4, 1), gis_bldg_id="GISID002", pnu="9999999999999999999"
         ),
     )
-    zip2 = tmp_path / "AL_D010_30_20260401.zip"
-    zip2.touch()
+    zip2 = _make_zip(tmp_path / "AL_D010_30_20260401.zip")
     building_loading.load_buildings(zip2)
 
     building.refresh_from_db()
@@ -176,8 +217,7 @@ def test_load_buildings_upsert_preserves_id_and_soft_deletes_missing(monkeypatch
     monkeypatch.setattr(
         "pyogrio.read_dataframe", lambda *a, **k: _tiny_gdf(date(2026, 7, 1))
     )
-    zip3 = tmp_path / "AL_D010_30_20260701.zip"
-    zip3.touch()
+    zip3 = _make_zip(tmp_path / "AL_D010_30_20260701.zip")
     building_loading.load_buildings(zip3)
 
     building.refresh_from_db()
@@ -212,8 +252,7 @@ def test_load_buildings_for_another_sido_does_not_deactivate_existing_region(mon
             bjd_code="3611010100",
         ),
     )
-    zip_path = tmp_path / "AL_D010_36_20260101.zip"
-    zip_path.touch()
+    zip_path = _make_zip(tmp_path / "AL_D010_36_20260101.zip")
 
     building_loading.load_buildings(zip_path, sido_code="36")
 
@@ -247,8 +286,7 @@ def test_load_buildings_rejects_file_whose_region_does_not_match_sido_code(monke
             bjd_code="3611010100",
         ),
     )
-    zip_path = tmp_path / "AL_D010_30_20260401.zip"
-    zip_path.touch()
+    zip_path = _make_zip(tmp_path / "AL_D010_30_20260401.zip")
 
     with pytest.raises(ValueError, match="지정한 지역"):
         building_loading.load_buildings(zip_path, sido_code="30")
@@ -256,3 +294,27 @@ def test_load_buildings_rejects_file_whose_region_does_not_match_sido_code(monke
     daejeon_building.refresh_from_db()
     assert daejeon_building.is_active is True  # 실패했으니 기존 건물은 전혀 안 바뀌어야 한다
     assert not Building.objects.filter(building_key="SEJONG1").exists()
+
+
+@pytest.mark.django_db
+def test_load_buildings_works_when_zip_filename_has_extra_suffix(monkeypatch, tmp_path):
+    """zip 파일명이 "AL_D010_30_20261009 (1).zip"처럼 바뀌어도(다운로드 시 실제로
+    재현됨) 적재가 되어야 한다 — resolve_vsizip_shp_path가 zip 안의 실제 .shp 이름을
+    쓰는지 end-to-end로 확인한다."""
+    pytest.importorskip("geopandas")
+
+    zip_path = tmp_path / "AL_D010_30_20261009 (1).zip"
+    _make_zip(zip_path, shp_name="AL_D010_30_20261009.shp")
+
+    captured_vsi_paths = []
+
+    def fake_read_dataframe(vsi_path, **kwargs):
+        captured_vsi_paths.append(vsi_path)
+        return _tiny_gdf(date(2026, 1, 1))
+
+    monkeypatch.setattr("pyogrio.read_dataframe", fake_read_dataframe)
+
+    building_loading.load_buildings(zip_path)
+
+    assert captured_vsi_paths == [f"/vsizip/{zip_path.resolve()}/AL_D010_30_20261009.shp"]
+    assert Building.objects.filter(building_key="GISID001").exists()

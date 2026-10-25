@@ -1,6 +1,7 @@
 """building 적재: data/raw/AL_D010_30_*.zip → building 테이블 upsert (spec 8-6)."""
 import logging
 import re
+import zipfile
 from pathlib import Path
 
 import shapely.wkb
@@ -103,8 +104,16 @@ def resolve_building_zip_path(explicit_path: str | None = None, sido_code: str =
 
 
 def resolve_vsizip_shp_path(zip_path: Path) -> str:
-    shp_name = zip_path.stem + ".shp"
-    return f"/vsizip/{zip_path.resolve()}/{shp_name}"
+    """zip 안의 실제 파일 목록에서 .shp를 찾는다 — zip 파일명(zip_path.stem)으로 shp 이름을
+    추정하지 않는다. 다운로드하며 zip 파일명에 " (1)" 같은 접미사가 붙어도(실제로 재현됨)
+    안의 .shp 이름은 그대로라 깨지면 안 되기 때문이다. 정확히 1개여야 한다."""
+    with zipfile.ZipFile(zip_path) as zf:
+        shp_names = [name for name in zf.namelist() if name.lower().endswith(".shp")]
+    if len(shp_names) != 1:
+        raise ValueError(
+            f"{zip_path} 안에서 .shp 파일을 정확히 1개 찾지 못했습니다(발견: {shp_names})."
+        )
+    return f"/vsizip/{zip_path.resolve()}/{shp_names[0]}"
 
 
 def assign_building_keys(records: list[dict]) -> None:

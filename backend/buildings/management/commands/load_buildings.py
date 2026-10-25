@@ -1,4 +1,4 @@
-from django.core.management.base import BaseCommand
+from django.core.management.base import BaseCommand, CommandError
 
 from buildings.building_loading import load_buildings, resolve_building_zip_path
 from core.jobs import JobSkipped, SkipJob, tracked_run
@@ -25,6 +25,10 @@ class Command(BaseCommand):
         except JobSkipped:
             self.stdout.write(self.style.WARNING("다른 적재가 실행 중이라 건너뜀"))
             return
+        except ValueError as exc:
+            # 지역 불일치(파일의 지역과 --sido가 다름) 등 입력 문제 — 트레이스백 없이
+            # 안내 문구만 보여주고 종료 코드 1로 끝낸다.
+            raise CommandError(str(exc)) from exc
 
         if run.status == run.Status.SKIPPED:
             self.stdout.write(self.style.WARNING(f"건너뜀: {run.error}"))

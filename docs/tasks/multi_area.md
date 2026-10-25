@@ -114,7 +114,24 @@ index_run 키로 바꿔 뒀다 — 이 단계에서 남은 건 그 "30" 기본�
 시도 코드 기반으로. `trade_sync`·`satellite_collect`·계절 체인·`safety_sync`의 Celery Beat
 주기 작업이 `ServiceArea.objects.filter(enabled=True)`를 돌며 지역별로 실행되게.
 
-**완료 기준**: 비활성화(`enabled=False`) 지역은 정기 배치에서 건너뛰는 테스트. 전체 pytest 통과.
+**이 단계에서 반드시 할 일(1~4단계 중간 점검, 2026-10-25 추가)**:
+1. **"30"/"daejeon" 기본값 제거는 태스크·관리 명령뿐 아니라 내부 함수 전부가 대상이다** —
+   `satellite/{composite,catalog,collect,backfill,season_chain}.py`, `publicdata/sync.py`,
+   `crime/{grid,collect}.py`, `buildings/building_loading.py` 등 `sido_code: str = "30"`
+   기본값이 있는 모든 함수에서 그 기본값을 없앤다. **지역 코드를 안 넘기면 오류가 나야
+   한다**(암묵적으로 대전으로 떨어지면 안 됨). CLI(각 명령의 `--sido`)만 예외로 둬서, 생략하면
+   `ServiceArea.objects.filter(enabled=True)` 전체를 돈다.
+2. **인자 이름을 `sido_code`로 통일한다**: `satellite/tasks.py`의 `satellite_collect(self,
+   region_code="30")`를 `sido_code`로, `crime/tasks.py`의 `safety_sync`가 지금 따로 쓰고 있는
+   `region_code="daejeon"`(잠금 키)·`sido_code="30"`(실제 지역) 두 인자도 이 단계에서 잠금 키
+   체계가 지역 기반으로 바뀌므로 `sido_code` 하나로 합친다.
+3. **`probe_crime_feature_cap`**: 대전 외 지역은 bbox 중심(2·3단계에서 임시로 넣은 방식)이
+   아니라 **그 지역에서 건물이 가장 많은 시군구의 건물들의 중심점**을 측정 위치로 쓴다 —
+   `Building`에서 `bjd_code` 앞 5자리(시군구)별 건수를 세어 가장 많은 시군구를 고르고, 그
+   건물들의 geom centroid를 쓴다(실제로 밀집된 곳을 봐야 숨은 상한이 제대로 드러난다).
+
+**완료 기준**: 비활성화(`enabled=False`) 지역은 정기 배치에서 건너뛰는 테스트. 지역 코드 없이
+내부 함수를 부르면 에러가 나는 테스트. 전체 pytest 통과.
 
 ### 8. `areas` 관리 명령 — list/status/add/disable
 

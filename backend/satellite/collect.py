@@ -21,11 +21,13 @@ def collect_scenes(start: date, end: date, sido_code: str = "30") -> dict:
     date_groups = group_by_date(items)
 
     # listed(백필 dry run이 미리 적어둔 행, 4장)는 아직 다운로드 전이라 "이미 처리됨"으로
-    # 치지 않는다 — 실제로 받아서 ready/excluded로 올려야 한다.
+    # 치지 않는다 — 실제로 받아서 ready/excluded로 올려야 한다. region_code로 좁히는 이유
+    # (다지역 지원 6단계): 다른 지역이 이미 처리한 scene_id를 "이미 처리됨"으로 보고 이
+    # 지역에서 건너뛰면 안 된다 — 지역마다 자기 격자로 따로 투영해야 한다.
     existing_scene_ids = set(
-        SatelliteScene.objects.exclude(status=SatelliteScene.Status.LISTED).values_list(
-            "scene_id", flat=True
-        )
+        SatelliteScene.objects.filter(region_code=sido_code)
+        .exclude(status=SatelliteScene.Status.LISTED)
+        .values_list("scene_id", flat=True)
     )
 
     tiles_covered: set[str] = set()
@@ -40,7 +42,7 @@ def collect_scenes(start: date, end: date, sido_code: str = "30") -> dict:
         if not new_items:
             continue
 
-        scenes = ingest_date_group(new_items, grid=grid)
+        scenes = ingest_date_group(new_items, grid=grid, sido_code=sido_code)
         for scene in scenes:
             tiles_covered.add(scene.mgrs_tile)
             if scene.status == SatelliteScene.Status.READY:

@@ -194,6 +194,7 @@ def run_season_composite(year: int, season: str, sido_code: str = "30") -> dict:
     period_start, period_end = parse_season(f"{year}-{season}")
     scenes = list(
         SatelliteScene.objects.filter(
+            region_code=sido_code,
             status=SatelliteScene.Status.READY,
             sensed_at__date__gte=period_start,
             sensed_at__date__lte=period_end,

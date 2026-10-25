@@ -28,13 +28,22 @@ class CrimeFetchProgress(models.Model):
         SPLIT = "split", "split"  # 상한에 걸려 4등분하고 자식 셀에 넘김(자신은 완료로 취급)
         FAILED = "failed", "failed"
 
-    cell_id = models.CharField(max_length=60, unique=True)
+    # 기본값을 일부러 안 둔다(다지역 지원 6단계, raster_product.region_code와 같은 이유).
+    # 셀 좌표가 두 지역 bbox에 모두 걸릴 수 있어(격자 여유 때문에) cell_id만으로는 더 이상
+    # 유일하지 않다 — 유일 제약을 (cell_id, region_code)로 바꿨다.
+    region_code = models.CharField(max_length=2)
+    cell_id = models.CharField(max_length=60)
     status = models.CharField(max_length=10, choices=Status.choices, default=Status.PENDING)
     feature_count = models.IntegerField(null=True, blank=True)
     fetched_at = models.DateTimeField(null=True, blank=True)
 
     class Meta:
         db_table = "crime_fetch_progress"
+        constraints = [
+            models.UniqueConstraint(
+                fields=["cell_id", "region_code"], name="crime_fetch_progress_cell_region_uniq"
+            )
+        ]
 
     def __str__(self):
-        return f"{self.cell_id} ({self.status})"
+        return f"{self.cell_id} ({self.region_code}, {self.status})"

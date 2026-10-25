@@ -11,7 +11,12 @@ class SatelliteScene(models.Model):
         EXCLUDED = "excluded", "excluded"  # 유효 화소 20% 미만(spec 2-3)
         FAILED = "failed", "failed"
 
-    scene_id = models.CharField(max_length=80, unique=True)  # STAC item.id
+    # 기본값을 일부러 안 둔다(다지역 지원 6단계, raster_product.region_code와 같은 이유).
+    # scene_id는 더 이상 혼자 유일하지 않다 — 같은 MGRS 타일이 두 지역 모두에 걸치면
+    # (대전·세종처럼) 같은 STAC scene_id를 두 지역이 각자 자기 격자로 다시 투영해 따로
+    # 저장해야 하므로, 유일 제약을 (scene_id, region_code)로 바꿨다.
+    region_code = models.CharField(max_length=2)
+    scene_id = models.CharField(max_length=80)  # STAC item.id
     sensed_at = models.DateTimeField()
     mgrs_tile = models.CharField(max_length=10)
     cloud_pct = models.FloatField()
@@ -33,9 +38,14 @@ class SatelliteScene(models.Model):
         indexes = [
             models.Index(fields=["mgrs_tile", "sensed_at"], name="satellite_tile_sensed_idx")
         ]
+        constraints = [
+            models.UniqueConstraint(
+                fields=["scene_id", "region_code"], name="satellite_scene_id_region_uniq"
+            )
+        ]
 
     def __str__(self):
-        return self.scene_id
+        return f"{self.scene_id} ({self.region_code})"
 
 
 class RasterProduct(models.Model):

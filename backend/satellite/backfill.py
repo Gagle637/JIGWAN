@@ -64,7 +64,9 @@ def dry_run_list_scenes(seasons: list[tuple[int, str]], sido_code: str = "30") -
     """spec 4장 2단계: 대상 계절 전체를 STAC로 검색해 status=listed로 기록하고, 신규 장면
     수·예상 다운로드 용량을 집계한다(CDSE 한도 안에서 일정을 잡는 용도)."""
     bbox = get_bbox(sido_code)
-    existing_ids = set(SatelliteScene.objects.values_list("scene_id", flat=True))
+    existing_ids = set(
+        SatelliteScene.objects.filter(region_code=sido_code).values_list("scene_id", flat=True)
+    )
     new_count = 0
     per_season = []
 
@@ -77,6 +79,7 @@ def dry_run_list_scenes(seasons: list[tuple[int, str]], sido_code: str = "30") -
                 continue
             SatelliteScene.objects.update_or_create(
                 scene_id=item.id,
+                region_code=sido_code,
                 defaults={
                     "sensed_at": sensed_at(item),
                     "mgrs_tile": tile_code(item),

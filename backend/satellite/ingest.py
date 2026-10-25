@@ -54,9 +54,11 @@ def _process_tile(local_paths: dict[str, Path], grid: dict) -> dict:
     return {"mtd": mtd, "reflectance_bands": reflectance_bands_uint16, "scl_grid": scl_grid}
 
 
-def ingest_date_group(items_same_date: list, grid: dict) -> list[SatelliteScene]:
+def ingest_date_group(items_same_date: list, grid: dict, sido_code: str) -> list[SatelliteScene]:
     """1~2개 타일(같은 날짜)을 처리해 SatelliteScene 행 목록을 돌려준다. grid는
-    core.areas.get_grid(sido_code)(다지역 지원 2단계)."""
+    core.areas.get_grid(sido_code)(다지역 지원 2단계). sido_code는 COG 파일명과
+    SatelliteScene.region_code에 쓴다(다지역 지원 6단계) — 같은 scene_id를 두 지역이
+    각자 자기 격자로 투영해 따로 저장할 수 있으므로, 지역마다 다른 파일 경로가 필요하다."""
     tile_results = []
     with tempfile.TemporaryDirectory(prefix="satellite_") as tmp_dir:
         for item in items_same_date:
@@ -83,7 +85,7 @@ def ingest_date_group(items_same_date: list, grid: dict) -> list[SatelliteScene]
     first_item = items_same_date[0]
     date_str = sensed_at(first_item).strftime("%Y%m%dT%H%M%S")
     tile_codes = "-".join(sorted({tile_code(item) for item in items_same_date}))
-    base_name = f"{date_str}_{tile_codes}"
+    base_name = f"{sido_code}_{date_str}_{tile_codes}"
     cog_dir = Path(settings.SATELLITE_SCENE_COG_DIR)
     cog_path = cog_dir / f"{base_name}_REFL.tif"
     scl_cog_path = cog_dir / f"{base_name}_SCL.tif"
@@ -97,6 +99,7 @@ def ingest_date_group(items_same_date: list, grid: dict) -> list[SatelliteScene]
         # update_or_create로 그 행을 ready/excluded로 올려 쓴다(4장).
         scene, _created = SatelliteScene.objects.update_or_create(
             scene_id=item.id,
+            region_code=sido_code,
             defaults={
                 "sensed_at": sensed_at(item),
                 "mgrs_tile": tile_code(item),

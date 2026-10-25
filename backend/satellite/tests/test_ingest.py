@@ -107,7 +107,7 @@ def test_two_tiles_same_date_share_cog_path_and_use_own_offsets(tmp_path, monkey
     }
     _patch_download_and_mtd(monkeypatch, files_by_key, mtd_by_key, tmp_path)
 
-    scenes = ingest_module.ingest_date_group([tile_a, tile_b], _GRID)
+    scenes = ingest_module.ingest_date_group([tile_a, tile_b], _GRID, "30")
 
     assert len(scenes) == 2
     assert scenes[0].cog_path == scenes[1].cog_path
@@ -130,6 +130,7 @@ def test_upgrades_existing_listed_row_instead_of_duplicating(tmp_path, monkeypat
     )
     SatelliteScene.objects.create(
         scene_id=item.id,
+        region_code="30",
         sensed_at="2026-08-11T08:55:59+00:00",
         mgrs_tile="T52SCF",
         cloud_pct=10.0,
@@ -145,7 +146,7 @@ def test_upgrades_existing_listed_row_instead_of_duplicating(tmp_path, monkeypat
     }
     _patch_download_and_mtd(monkeypatch, files_by_key, mtd_by_key, tmp_path)
 
-    scenes = ingest_module.ingest_date_group([item], _GRID)
+    scenes = ingest_module.ingest_date_group([item], _GRID, "30")
 
     assert SatelliteScene.objects.filter(scene_id=item.id).count() == 1
     assert scenes[0].status == SatelliteScene.Status.READY
@@ -165,7 +166,35 @@ def test_low_valid_ratio_marks_excluded(tmp_path, monkeypatch):
     }
     _patch_download_and_mtd(monkeypatch, files_by_key, mtd_by_key, tmp_path)
 
-    scenes = ingest_module.ingest_date_group([item], _GRID)
+    scenes = ingest_module.ingest_date_group([item], _GRID, "30")
 
     assert scenes[0].valid_ratio == 0.0
     assert scenes[0].status == SatelliteScene.Status.EXCLUDED
+
+
+def test_two_regions_ingesting_the_same_scene_id_are_stored_as_separate_rows(tmp_path, monkeypatch):
+    """같은 MGRS 타일이 두 지역에 걸치면 같은 scene_id를 두 지역이 각자 처리할 수 있다
+    (다지역 지원 6단계) — (scene_id, region_code)로 유일해야 하지, scene_id만으로 유일하면
+    한 지역이 다른 지역의 행을 덮어쓴다."""
+    item = FakeItem(
+        "S2B_MSIL2A_20260812T085559_N0512_R007_T52SCF_20260812T111845", "2026-08-12T08:55:59Z"
+    )
+    files_by_key = {item.id: _make_tile_files(tmp_path, "shared", dn_value=2000, scl_value=4)}
+    mtd_by_key = {
+        item.id: {
+            "band_offsets": {b: -1000 for b in ["B02", "B03", "B04", "B08", "B11"]},
+            "boa_quantification_value": 10000,
+        }
+    }
+    _patch_download_and_mtd(monkeypatch, files_by_key, mtd_by_key, tmp_path)
+
+    ingest_module.ingest_date_group([item], _GRID, "30")
+    ingest_module.ingest_date_group([item], _GRID, "36")
+
+    rows = SatelliteScene.objects.filter(scene_id=item.id)
+    assert rows.count() == 2
+    region_codes = sorted(rows.values_list("region_code", flat=True))
+    assert region_codes == ["30", "36"]
+    # 지역마다 COG 파일 경로가 달라야 한다(한쪽이 다른 쪽 파일을 덮어쓰면 안 됨).
+    cog_paths = set(rows.values_list("cog_path", flat=True))
+    assert len(cog_paths) == 2

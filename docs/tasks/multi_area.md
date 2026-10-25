@@ -103,12 +103,28 @@ RasterProduct.region_code 사용), `backend/satellite/ingest.py`, `backend/satel
 레이어를 따로 두거나 모자이크(여러 지역 COG를 하나의 타일 서비스로 합치는 것)가 필요하다 —
 이번 단계에서는 손대지 않고, 프론트 단계나 레이어 레지스트리를 다루는 별도 단계에서 처리한다.
 
-### 6. `satellite_scene` 유일 키 + crime 수집 지역 구분
+### 6. `satellite_scene` 유일 키 + crime 수집 지역 구분 — 완료(2026-10-25)
 
 **파일**: `backend/satellite/models.py`(`SatelliteScene`의 unique 제약을 `(scene_id, region_code)`로,
-마이그레이션), `backend/crime/models.py`(`CrimeFetchProgress`에 `region_code` 추가 여부 — 셀
-좌표가 지역마다 겹칠 가능성이 낮아도 명시적으로 구분해 두는 게 안전, 마이그레이션),
-`backend/crime/collect.py`.
+마이그레이션), `backend/crime/models.py`(`CrimeFetchProgress`의 unique 제약을 `(cell_id, region_code)`로,
+마이그레이션), `backend/crime/collect.py`.
+
+실제로는 "같은 MGRS 타일이 두 지역에 걸치면 scene_id가 전역 유일해서 서로 덮어씀"이
+핵심이었다 — `ingest.py`(COG 파일명에 sido_code 포함, `update_or_create`에 region_code
+추가), `collect.py`(중복 제거 쿼리 스코핑), `composite.py`(장면 조회 스코핑), `backfill.py`
+(`dry_run_list_scenes`의 existing_ids/update_or_create 스코핑)도 같이 고쳤다.
+
+`crime/collect.py`는 `CrimeFetchProgress`의 전역 `.all().delete()`/전역 "완료됐는지" 체크/
+전역 failed→pending 리셋을 전부 `region_code=sido_code`로 좁혔다. 또한 완료 후 지난 기간
+정리(`CrimeSegment.exclude(data_period=...).delete()`)가 전국 단위라 한 지역만 동기화를
+마쳐도 다른 지역의 아직 안 바뀐 구간이 지워지는 문제가 있어, 삭제 범위를 그 지역의 시도
+경계 폴리곤(bbox 아님 — bbox는 격자 여유 500m 때문에 맞닿은 이웃 지역 땅까지 포함)과
+교차하는 구간으로 좁히고, "이번 실행에서 받은 objt_id"는 추가로 보호했다
+(`geom__intersects=region.geom AND data_period != 이번 기간 AND objt_id NOT IN 이번에 받은 것`).
+
+발견한 추가 버그(이번 단계에서 같이 고침): `satellite/retention.py`의 `_used_scene_ids_before`가
+scene_id만으로 "지워도 되는 장면"을 모아서, 한 지역의 오래된 합성과 같은 scene_id를 쓰는
+**다른 지역의 최근** 장면 COG까지 지울 수 있었다 — `(scene_id, region_code)` 쌍으로 비교하도록 수정.
 
 **완료 기준**: 두 지역이 같은 `scene_id`를 가져도 DB에서 별개로 저장되는 테스트. 전체 pytest 통과.
 

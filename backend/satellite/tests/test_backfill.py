@@ -46,6 +46,7 @@ def test_target_seasons_handles_january_as_previous_years_winter():
 def test_dry_run_list_scenes_creates_listed_rows_and_skips_existing(monkeypatch):
     existing = SatelliteScene.objects.create(
         scene_id="S2B_MSIL2A_20230615T085559_N0512_R007_T52SCF_20230615T111845",
+        region_code="30",
         sensed_at="2023-06-15T08:55:59+00:00",
         mgrs_tile="T52SCF",
         cloud_pct=5.0,

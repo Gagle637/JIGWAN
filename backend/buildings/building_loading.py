@@ -19,7 +19,10 @@ SOURCE_SRID = 5186
 STAGING_TABLE = "building_staging"
 
 DATA_RAW_DIR = Path(settings.BASE_DIR).parent / "data" / "raw"
-_ZIP_NAME_RE = re.compile(r"AL_D010_30_(\d{8})\.zip$")
+
+
+def _zip_name_pattern(sido_code: str) -> re.Pattern:
+    return re.compile(rf"AL_D010_{re.escape(sido_code)}_(\d{{8}})\.zip$")
 
 # geom_src(원본 5186 지오메트리)는 마지막에 둔다 — load_buildings의 row 조립이 이 순서에 의존한다.
 BUILDING_STAGING_COLUMNS = [
@@ -76,9 +79,9 @@ FROM {STAGING_TABLE}
 """
 
 
-def resolve_building_zip_path(explicit_path: str | None = None) -> Path:
-    """explicit_path가 있으면 그대로, 없으면 data/raw/AL_D010_30_*.zip 중
-    파일명 끝 8자리 날짜(YYYYMMDD)가 가장 큰 파일을 고른다."""
+def resolve_building_zip_path(explicit_path: str | None = None, sido_code: str = "30") -> Path:
+    """explicit_path가 있으면 그대로, 없으면 data/raw/AL_D010_{sido_code}_*.zip 중
+    파일명 끝 8자리 날짜(YYYYMMDD)가 가장 큰 파일을 고른다(다지역 지원 4단계)."""
     if explicit_path:
         path = Path(explicit_path)
         if not path.exists():
@@ -86,13 +89,14 @@ def resolve_building_zip_path(explicit_path: str | None = None) -> Path:
         return path
 
     candidates = []
-    for candidate in DATA_RAW_DIR.glob("AL_D010_30_*.zip"):
-        match = _ZIP_NAME_RE.search(candidate.name)
+    pattern = _zip_name_pattern(sido_code)
+    for candidate in DATA_RAW_DIR.glob(f"AL_D010_{sido_code}_*.zip"):
+        match = pattern.search(candidate.name)
         if match:
             candidates.append((match.group(1), candidate))
     if not candidates:
         raise FileNotFoundError(
-            f"{DATA_RAW_DIR}에서 AL_D010_30_*.zip 파일을 찾지 못했습니다."
+            f"{DATA_RAW_DIR}에서 AL_D010_{sido_code}_*.zip 파일을 찾지 못했습니다."
         )
     candidates.sort(key=lambda pair: pair[0])
     return candidates[-1][1]
@@ -127,7 +131,7 @@ def assign_building_keys(records: list[dict]) -> None:
             record["building_key"] = f"{gis_bldg_id}_{ordinal}"
 
 
-def load_buildings(zip_path: Path) -> dict:
+def load_buildings(zip_path: Path, sido_code: str = "30") -> dict:
     import pyogrio  # 지연 임포트: mapping.py 단위 테스트는 GDAL 없이도 돌게 하기 위함
 
     vsi_path = resolve_vsizip_shp_path(zip_path)
@@ -156,11 +160,23 @@ def load_buildings(zip_path: Path) -> dict:
         mapped["_geom"] = geom
         records.append(mapped)
 
+    # 안전장치(다지역 지원 4단계): 다른 지역 파일을 --sido로 잘못 넣으면, 본 테이블의
+    # soft-delete 스코프가 bjd_code 앞 2자리로 걸려 있어도 그 파일 안의 행 자체가 엉뚱한
+    # 지역으로 들어갈 수 있다 — 트랜잭션을 시작하기 전에 전부 걸러낸다.
+    foreign_sido_codes = {
+        r["bjd_code"][:2] for r in records if r.get("bjd_code") and r["bjd_code"][:2] != sido_code
+    }
+    if foreign_sido_codes:
+        raise ValueError(
+            f"파일의 지역({', '.join(sorted(foreign_sido_codes))})과 지정한 지역"
+            f"({sido_code})이 다릅니다."
+        )
+
     new_source_dates = {r["source_date"] for r in records if r["source_date"]}
     new_source_date = max(new_source_dates) if new_source_dates else None
-    current_source_date = Building.objects.aggregate(Max("source_date"))[
-        "source_date__max"
-    ]
+    current_source_date = Building.objects.filter(
+        bjd_code__startswith=sido_code
+    ).aggregate(Max("source_date"))["source_date__max"]
     if (
         new_source_date is not None
         and current_source_date is not None
@@ -188,6 +204,8 @@ def load_buildings(zip_path: Path) -> dict:
         final_columns=FINAL_COLUMNS,
         conflict_columns=["building_key"],
         soft_delete_column="is_active",
+        soft_delete_scope_sql="LEFT(f.bjd_code, 2) = %s",
+        soft_delete_scope_params=[sido_code],
     )
 
     total = len(records)

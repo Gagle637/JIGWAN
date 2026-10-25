@@ -6,20 +6,22 @@ from core.jobs import JobSkipped, SkipJob, tracked_run
 
 class Command(BaseCommand):
     help = (
-        "GIS건물통합정보(대전) 파일을 building 테이블에 upsert로 적재한다. "
-        "zip_path를 생략하면 data/raw/AL_D010_30_*.zip 중 파일명 날짜가 가장 최신인 파일을 쓴다."
+        "GIS건물통합정보 파일을 building 테이블에 upsert로 적재한다. "
+        "zip_path를 생략하면 data/raw/AL_D010_{sido}_*.zip 중 파일명 날짜가 가장 최신인 파일을 쓴다."
     )
 
     def add_arguments(self, parser):
         parser.add_argument("zip_path", nargs="?", default=None)
+        parser.add_argument("--sido", default="30", help="적재 대상 시도 코드(기본 30=대전)")
 
     def handle(self, *args, **options):
-        zip_path = resolve_building_zip_path(options["zip_path"])
+        sido_code = options["sido"]
+        zip_path = resolve_building_zip_path(options["zip_path"], sido_code=sido_code)
         self.stdout.write(f"대상 파일: {zip_path}")
 
         try:
             with tracked_run("building_load", "daejeon") as run:
-                summary = load_buildings(zip_path)
+                summary = load_buildings(zip_path, sido_code=sido_code)
         except JobSkipped:
             self.stdout.write(self.style.WARNING("다른 적재가 실행 중이라 건너뜀"))
             return

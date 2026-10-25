@@ -83,7 +83,12 @@ def test_epsg_5186_projection_origin_matches_known_point():
 # ---- load_buildings: source_date 동일 시 SkipJob (django_db, pyogrio는 모킹) ----
 
 
-def _tiny_gdf(source_date_value, gis_bldg_id="GISID001", pnu="3011010300101530003"):
+def _tiny_gdf(
+    source_date_value,
+    gis_bldg_id="GISID001",
+    pnu="3011010300101530003",
+    bjd_code="3011010300",
+):
     gpd = pytest.importorskip("geopandas")
     from shapely.geometry import Polygon
 
@@ -91,7 +96,7 @@ def _tiny_gdf(source_date_value, gis_bldg_id="GISID001", pnu="301101030010153000
     data = {
         "A1": [gis_bldg_id],
         "A2": [pnu],
-        "A3": ["3011010300"],
+        "A3": [bjd_code],
         "A4": ["대전광역시 동구 효동"],
         "A5": ["153-3"],
         "A8": ["01000"],
@@ -121,7 +126,7 @@ def test_load_buildings_skips_when_source_date_unchanged(monkeypatch, tmp_path):
         building_key="EXISTING",
         gis_bldg_id="EXISTING",
         pnu="0000000000000000000",
-        bjd_code="0000000000",
+        bjd_code="3099999999",
         source_date=existing_date,
         geom="POLYGON((0 0, 1 0, 1 1, 0 1, 0 0))",
     )
@@ -178,3 +183,76 @@ def test_load_buildings_upsert_preserves_id_and_soft_deletes_missing(monkeypatch
     building.refresh_from_db()
     assert building.id == first_id
     assert building.is_active is True
+
+
+# ---- 다지역 지원 4단계: 지역 범위 soft-delete + 파일/지정 지역 불일치 안전장치 ----
+
+
+@pytest.mark.django_db
+def test_load_buildings_for_another_sido_does_not_deactivate_existing_region(monkeypatch, tmp_path):
+    """세종(36) 건물을 적재해도 기존 대전(30) 건물이 그대로 is_active=True로 남아야 한다
+    (완료 기준) — sync_geotable의 soft-delete가 지역 범위로 좁혀져 있는지 확인한다."""
+    pytest.importorskip("geopandas")
+
+    daejeon_building = Building.objects.create(
+        building_key="DAEJEON1",
+        gis_bldg_id="DAEJEON1",
+        pnu="3011010300101530003",
+        bjd_code="3011010300",
+        source_date=date(2026, 1, 1),
+        geom="POLYGON((0 0, 1 0, 1 1, 0 1, 0 0))",
+    )
+
+    monkeypatch.setattr(
+        "pyogrio.read_dataframe",
+        lambda *a, **k: _tiny_gdf(
+            date(2026, 1, 1),
+            gis_bldg_id="SEJONG1",
+            pnu="3611010100101530003",
+            bjd_code="3611010100",
+        ),
+    )
+    zip_path = tmp_path / "AL_D010_36_20260101.zip"
+    zip_path.touch()
+
+    building_loading.load_buildings(zip_path, sido_code="36")
+
+    daejeon_building.refresh_from_db()
+    assert daejeon_building.is_active is True
+    sejong_building = Building.objects.get(building_key="SEJONG1")
+    assert sejong_building.is_active is True
+
+
+@pytest.mark.django_db
+def test_load_buildings_rejects_file_whose_region_does_not_match_sido_code(monkeypatch, tmp_path):
+    """세종(36) 파일을 --sido 30으로 잘못 넣으면, 트랜잭션을 시작하지 않고 바로 실패해야
+    한다 — 대전 건물 전체가 비활성화되는 사고를 막기 위한 안전장치."""
+    pytest.importorskip("geopandas")
+
+    daejeon_building = Building.objects.create(
+        building_key="DAEJEON1",
+        gis_bldg_id="DAEJEON1",
+        pnu="3011010300101530003",
+        bjd_code="3011010300",
+        source_date=date(2026, 1, 1),
+        geom="POLYGON((0 0, 1 0, 1 1, 0 1, 0 0))",
+    )
+
+    monkeypatch.setattr(
+        "pyogrio.read_dataframe",
+        lambda *a, **k: _tiny_gdf(
+            date(2026, 4, 1),
+            gis_bldg_id="SEJONG1",
+            pnu="3611010100101530003",
+            bjd_code="3611010100",
+        ),
+    )
+    zip_path = tmp_path / "AL_D010_30_20260401.zip"
+    zip_path.touch()
+
+    with pytest.raises(ValueError, match="지정한 지역"):
+        building_loading.load_buildings(zip_path, sido_code="30")
+
+    daejeon_building.refresh_from_db()
+    assert daejeon_building.is_active is True  # 실패했으니 기존 건물은 전혀 안 바뀌어야 한다
+    assert not Building.objects.filter(building_key="SEJONG1").exists()

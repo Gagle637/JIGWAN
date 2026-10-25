@@ -22,6 +22,8 @@ def sync_geotable(
     final_columns: Sequence[str],
     conflict_columns: Sequence[str],
     soft_delete_column: str | None = None,
+    soft_delete_scope_sql: str | None = None,
+    soft_delete_scope_params: Sequence = (),
 ) -> dict:
     """staging 테이블에 COPY 적재 후, 한 트랜잭션에서 final_table에 upsert로 반영한다.
 
@@ -34,6 +36,11 @@ def sync_geotable(
     - conflict_columns가 있는 그대로 ON CONFLICT 대상이 된다(building_key 또는 region_code).
     - soft_delete_column을 주면, staging에 없는 기존 행을 삭제 대신 그 컬럼을 false로 바꾼다.
       None이면 없어진 행은 그대로 둔다(region).
+    - soft_delete_scope_sql/soft_delete_scope_params: soft_delete_column을 쓸 때, 비활성화
+      대상을 더 좁히는 WHERE 조건 조각(예: "LEFT(f.bjd_code, 2) = %s", [sido_code]) — building처럼
+      지역별로 따로 적재하면, staging에 한 지역만 담겨 있어도 다른 지역 행까지 비활성화되는 걸
+      막는다(다지역 지원 4단계). None이면 전체 테이블을 기준으로 한다(region은 지역 구분이
+      필요 없어 그대로 둔다).
 
     실패하면 트랜잭션 전체가 롤백되어 staging 테이블도 남지 않고 final_table도 그대로다.
     """
@@ -65,6 +72,7 @@ def sync_geotable(
             join_cond = " AND ".join(
                 f"s.{_quote_ident(c)} = f.{_quote_ident(c)}" for c in conflict_columns
             )
+            scope_clause = f" AND {soft_delete_scope_sql}" if soft_delete_scope_sql else ""
             cur.execute(
                 f"""
                 UPDATE {final_ident} f
@@ -72,8 +80,9 @@ def sync_geotable(
                 WHERE f.{_quote_ident(soft_delete_column)} = true
                   AND NOT EXISTS (
                     SELECT 1 FROM {staging_ident} s WHERE {join_cond}
-                  )
-                """
+                  ){scope_clause}
+                """,
+                soft_delete_scope_params,
             )
 
         insert_cols = ", ".join(_quote_ident(c) for c in final_columns)

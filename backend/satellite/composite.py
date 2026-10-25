@@ -1,17 +1,20 @@
 """계절 합성: SCL 재마스킹 → 장면별 NDVI·NDBI·RGB → 화소별 중앙값 → green_mask (spec 3-3)."""
+import json
 import logging
 import warnings
 from pathlib import Path
 
 import numpy as np
 import rasterio
+import rasterio.features
 from django.conf import settings
 from django.contrib.gis.geos import Polygon
 from django.db import transaction
 
+from buildings.models import Region
 from core.areas import get_bbox, get_grid
 
-from .cog import iter_grid_blocks, open_cog_writer
+from .cog import grid_transform, iter_grid_blocks, open_cog_writer
 from .index_scaling import INDEX_NODATA, MASK_NODATA, encode_mask, scale_index_to_int16
 from .ingest import REFLECTANCE_BANDS
 from .models import RasterProduct, SatelliteScene
@@ -70,16 +73,38 @@ def _read_scene_block(refl_ds, scl_ds, window) -> dict[str, np.ndarray]:
     return mask_scene_reflectance(bands, scl_block)
 
 
+def _sido_inside_mask(grid: dict, sido_code: str) -> np.ndarray:
+    """격자 전체 크기의 bool 배열(True=그 시도 경계 안) — 격자에는 500m 여유가 있어 이웃
+    지역과 겹치므로(대전·세종처럼 실제로 맞닿은 경우), 경계 밖 화소를 nodata로 잘라내는 데
+    쓴다(다지역 지원 5단계) — 안 그러면 반경 통계가 경계 근처에서 이중 계산된다."""
+    region = Region.objects.filter(level="sido", region_code=sido_code).first()
+    if region is None:
+        raise ValueError(
+            f"region(level=sido, region_code={sido_code})이 없습니다 — load_regions를 먼저 실행하세요."
+        )
+    geom_32652 = region.geom.transform(32652, clone=True)
+    geom_mapping = json.loads(geom_32652.geojson)
+    return rasterio.features.geometry_mask(
+        [geom_mapping],
+        out_shape=(grid["height"], grid["width"]),
+        transform=grid_transform(grid),
+        invert=True,
+    )
+
+
 def build_season_composite(
-    scenes: list[SatelliteScene], year: int, season: str, grid: dict
+    scenes: list[SatelliteScene], year: int, season: str, grid: dict, sido_code: str
 ) -> dict:
     """장면 목록을 512×512 블록 단위로 읽어 ndvi·ndbi·green_mask·truecolor COG를 만든다
-    (결정 사항 8-2 — 전체 스택을 메모리에 올리지 않는다)."""
+    (결정 사항 8-2 — 전체 스택을 메모리에 올리지 않는다). sido_code 경계 밖 화소는
+    nodata로 자른다(다지역 지원 5단계, _sido_inside_mask 참고)."""
     if not scenes:
         raise ValueError("합성할 장면이 없습니다(status=ready 장면 0건).")
 
+    inside_mask = _sido_inside_mask(grid, sido_code)
+
     out_dir = Path(settings.RESULT_COG_DIR)
-    base = f"{year}_{season}_{ALGO_VERSION}"
+    base = f"{sido_code}_{year}_{season}_{ALGO_VERSION}"
     paths = {
         "ndvi": out_dir / f"{base}_ndvi.tif",
         "ndbi": out_dir / f"{base}_ndbi.tif",
@@ -128,6 +153,15 @@ def build_season_composite(
                     axis=0,
                 )
 
+                outside = ~inside_mask[
+                    window.row_off : window.row_off + window.height,
+                    window.col_off : window.col_off + window.width,
+                ]
+                ndvi_block[outside] = np.nan
+                ndbi_block[outside] = np.nan
+                green_valid[outside] = False
+                rgb_block[:, outside] = np.nan
+
                 ndvi_dst.write(scale_index_to_int16(ndvi_block), 1, window=window)
                 ndbi_dst.write(scale_index_to_int16(ndbi_block), 1, window=window)
                 green_dst.write(encode_mask(green_block, valid=green_valid), 1, window=window)
@@ -167,13 +201,14 @@ def run_season_composite(year: int, season: str, sido_code: str = "30") -> dict:
     )
 
     grid = get_grid(sido_code)
-    result = build_season_composite(scenes, year, season, grid=grid)
+    result = build_season_composite(scenes, year, season, grid=grid, sido_code=sido_code)
     bbox = Polygon.from_bbox(get_bbox(sido_code))
     bbox.srid = 4326
 
     product_types = ["ndvi", "ndbi", "green_mask", "truecolor"]
     with transaction.atomic():
         RasterProduct.objects.filter(
+            region_code=sido_code,
             product_type__in=product_types,
             year=year,
             season=season,
@@ -182,6 +217,7 @@ def run_season_composite(year: int, season: str, sido_code: str = "30") -> dict:
 
         for product_type in product_types:
             RasterProduct.objects.create(
+                region_code=sido_code,
                 product_type=product_type,
                 year=year,
                 season=season,

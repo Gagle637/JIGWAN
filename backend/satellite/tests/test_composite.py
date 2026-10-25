@@ -1,13 +1,22 @@
 import numpy as np
 import pytest
+import rasterio
+from django.contrib.gis.geos import MultiPolygon
+from django.contrib.gis.geos import Polygon as GEOSPolygon
 
+from buildings.models import Region
+from satellite.cog import grid_transform
 from satellite.composite import (
     GREEN_NDVI_THRESHOLD,
+    build_season_composite,
     compute_ndbi,
     compute_ndvi,
     mask_scene_reflectance,
     median_with_min_observations,
 )
+from satellite.index_scaling import MASK_NODATA
+from satellite.ingest import REFLECTANCE_BANDS
+from satellite.models import SatelliteScene
 
 
 def test_compute_ndvi_known_values():
@@ -62,3 +71,103 @@ def test_median_with_min_observations_all_nan_block():
 
 def test_green_mask_threshold_constant():
     assert GREEN_NDVI_THRESHOLD == 0.4
+
+
+# ---- build_season_composite: 맞닿은 두 지역의 겹치는 버퍼 띠에서 이중 계산 방지(5단계) ----
+
+
+def _sido_region(region_code: str, minx, miny, maxx, maxy) -> Region:
+    poly_32652 = GEOSPolygon.from_bbox((minx, miny, maxx, maxy))
+    poly_32652.srid = 32652
+    geom_4326 = MultiPolygon(poly_32652.transform(4326, clone=True))
+    return Region.objects.create(
+        region_code=region_code, level="sido", name=f"테스트{region_code}", geom=geom_4326
+    )
+
+
+def _write_reflectance_and_scl(tmp_path, name, grid, value=3000, scl_value=4):
+    transform = grid_transform(grid)
+    shape = (grid["height"], grid["width"])
+    refl_path = tmp_path / f"{name}_refl.tif"
+    scl_path = tmp_path / f"{name}_scl.tif"
+
+    with rasterio.open(
+        refl_path, "w", driver="GTiff", dtype="uint16", count=len(REFLECTANCE_BANDS),
+        width=grid["width"], height=grid["height"], crs=grid["crs"], transform=transform,
+    ) as dst:
+        for i in range(len(REFLECTANCE_BANDS)):
+            dst.write(np.full(shape, value, dtype=np.uint16), i + 1)
+
+    with rasterio.open(
+        scl_path, "w", driver="GTiff", dtype="uint8", count=1,
+        width=grid["width"], height=grid["height"], crs=grid["crs"], transform=transform,
+    ) as dst:
+        dst.write(np.full(shape, scl_value, dtype=np.uint8), 1)
+
+    return str(refl_path), str(scl_path)
+
+
+def _make_scenes(tmp_path, name_prefix, grid, count=3):
+    """median_with_min_observations가 최소 3개 관측을 요구하므로(MIN_OBSERVATIONS) 똑같은
+    장면을 3개 만든다 — 값 자체는 중요하지 않고, 격자 전체(버퍼 포함)가 유효해야 한다."""
+    scenes = []
+    for i in range(count):
+        refl_path, scl_path = _write_reflectance_and_scl(tmp_path, f"{name_prefix}_{i}", grid)
+        scenes.append(
+            SatelliteScene(scene_id=f"{name_prefix}_{i}", cog_path=refl_path, scl_cog_path=scl_path)
+        )
+    return scenes
+
+
+def _pixel_value(path, grid, x, y, resolution_m):
+    row = int((grid["maxy"] - y) / resolution_m)
+    col = int((x - grid["minx"]) / resolution_m)
+    with rasterio.open(path) as ds:
+        return ds.read(1)[row, col]
+
+
+@pytest.mark.django_db
+def test_build_season_composite_clips_to_sido_boundary_to_avoid_double_counting_at_shared_border(
+    tmp_path,
+):
+    """격자에는 버퍼(여유)가 있어 맞닿은 두 지역의 격자가 겹친다(대전·세종처럼 실제로 맞닿은
+    경우) — 각 지역의 합성 결과는 자기 시도 경계 밖을 nodata로 잘라야, 반경 통계가 같은 기간의
+    여러 COG 픽셀을 합산할 때 겹치는 띠에서 두 번 세지 않는다."""
+    resolution_m = 10
+    buffer_m = 40
+    # 시도 A: x[341700,341900], 시도 B: x[341900,342100] — y는 공통, 서로 맞닿아 있다.
+    _sido_region("91", 341700, 4004820, 341900, 4004920)
+    _sido_region("92", 341900, 4004820, 342100, 4004920)
+
+    def _grid(minx, miny, maxx, maxy):
+        g = {
+            "crs": "EPSG:32652", "resolution_m": resolution_m,
+            "minx": minx - buffer_m, "miny": miny - buffer_m,
+            "maxx": maxx + buffer_m, "maxy": maxy + buffer_m,
+        }
+        g["width"] = round((g["maxx"] - g["minx"]) / resolution_m)
+        g["height"] = round((g["maxy"] - g["miny"]) / resolution_m)
+        return g
+
+    grid_a = _grid(341700, 4004820, 341900, 4004920)
+    grid_b = _grid(341900, 4004820, 342100, 4004920)
+
+    result_a = build_season_composite(
+        _make_scenes(tmp_path, "a", grid_a), 2026, "summer", grid_a, sido_code="91"
+    )
+    result_b = build_season_composite(
+        _make_scenes(tmp_path, "b", grid_b), 2026, "summer", grid_b, sido_code="92"
+    )
+
+    # 겹치는 버퍼 띠 안, B 쪽 진짜 영역(x=341920) — A의 결과는 자기 경계 밖이라 nodata여야
+    # 하고, B의 결과만 유효해야 한다(둘 다 유효하면 반경 통계가 이중 계산됨).
+    a_at_b_side = _pixel_value(result_a["paths"]["green_mask"], grid_a, 341920, 4004870, resolution_m)
+    b_at_b_side = _pixel_value(result_b["paths"]["green_mask"], grid_b, 341920, 4004870, resolution_m)
+    assert a_at_b_side == MASK_NODATA
+    assert b_at_b_side != MASK_NODATA
+
+    # 대칭: A 쪽 진짜 영역(x=341880) — B의 결과는 nodata, A의 결과만 유효해야 한다.
+    a_at_a_side = _pixel_value(result_a["paths"]["green_mask"], grid_a, 341880, 4004870, resolution_m)
+    b_at_a_side = _pixel_value(result_b["paths"]["green_mask"], grid_b, 341880, 4004870, resolution_m)
+    assert a_at_a_side != MASK_NODATA
+    assert b_at_a_side == MASK_NODATA

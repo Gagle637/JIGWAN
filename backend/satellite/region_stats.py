@@ -36,16 +36,21 @@ def zonal_green_ratio(green_mask_path: str, region_geom_4326) -> float:
     return green_count / valid_count
 
 
-def run_region_stat(year: int, season: str) -> dict:
+def run_region_stat(year: int, season: str, sido_code: str = "30") -> dict:
     """green_mask COG가 이미 있어야 한다(season_composite 먼저 실행). region이 비어 있으면
-    0건으로 끝난다(4단계 load_regions가 먼저 돌아 있어야 의미가 있음 — 알려진 한계)."""
+    0건으로 끝난다(4단계 load_regions가 먼저 돌아 있어야 의미가 있음 — 알려진 한계).
+    sido_code(다지역 지원 5단계)로 그 지역의 green_mask와 그 지역 안의 region만 쓴다 —
+    안 그러면 다른 지역의 산물을 집어 쓰거나, 모든 지역에 통계를 쌓아버릴 수 있다."""
     product = RasterProduct.objects.filter(
-        product_type="green_mask", year=year, season=season, algo_version=ALGO_VERSION
+        region_code=sido_code, product_type="green_mask", year=year, season=season,
+        algo_version=ALGO_VERSION,
     ).first()
     if product is None:
         raise ValueError(f"{year} {season} green_mask가 아직 없습니다(season_composite 먼저 필요).")
 
-    regions = list(Region.objects.filter(level__in=REGION_LEVELS))
+    regions = list(
+        Region.objects.filter(level__in=REGION_LEVELS, region_code__startswith=sido_code)
+    )
     created = 0
     with transaction.atomic():
         RegionStat.objects.filter(product=product).delete()

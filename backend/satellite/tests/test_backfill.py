@@ -79,10 +79,11 @@ def test_dry_run_list_scenes_creates_listed_rows_and_skips_existing(monkeypatch)
     assert listed.band_offsets is None
 
 
-def _publish_all_product_types(year, season):
+def _publish_all_product_types(year, season, region_code="30"):
     bbox = Polygon.from_bbox(_BBOX)
     for product_type in ("ndvi", "ndbi", "green_mask", "truecolor"):
         RasterProduct.objects.create(
+            region_code=region_code,
             product_type=product_type,
             year=year,
             season=season,
@@ -109,6 +110,31 @@ def test_run_backfill_skips_season_already_fully_published(monkeypatch):
     results = backfill_module.run_backfill([(2023, "summer")])
 
     assert results == [{"season": "2023-summer", "skipped": True}]
+
+
+def test_run_backfill_does_not_skip_when_only_another_region_is_published(monkeypatch):
+    """세종(36)이 2023 여름을 다 게시했어도, 대전(30)은 아직 안 게시했으니 건너뛰면 안 된다
+    (다지역 지원 5단계 — region_code로 안 좁히면 다른 지역 게시 상태를 보고 잘못 건너뜀)."""
+    _publish_all_product_types(2023, "summer", region_code="36")
+
+    calls = []
+    monkeypatch.setattr(
+        backfill_module,
+        "collect_scenes",
+        lambda start, end, sido_code="30": calls.append(sido_code) or {"ready": 0, "excluded": 0},
+    )
+    monkeypatch.setattr(
+        backfill_module,
+        "run_season_chain_sync",
+        lambda year, season, sido_code="30": {"catalog_publish": "ok"},
+    )
+
+    results = backfill_module.run_backfill([(2023, "summer")], sido_code="30")
+
+    assert calls == ["30"]
+    assert results == [
+        {"season": "2023-summer", "collect": {"ready": 0, "excluded": 0}, "chain": {"catalog_publish": "ok"}}
+    ]
 
 
 def test_run_backfill_processes_unfinished_season(monkeypatch):

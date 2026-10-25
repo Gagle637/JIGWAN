@@ -89,7 +89,19 @@ RasterProduct.region_code 사용), `backend/satellite/ingest.py`, `backend/satel
 **파일**: `backend/satellite/models.py`(`RasterProduct.region_code` 추가, 마이그레이션),
 재계산 키(캐시 키 등)에 포함되는 곳, COG 파일 경로 조립 로직(지역 포함하도록).
 
+구현하며 발견한 것: `region_code` 없이 year/season/algo_version만으로 조회·삭제하던 곳이
+`composite.py`(삭제-후-재생성)·`change_detection.py`(현재/과거 ndvi·ndbi 조회, 삭제-후-재생성)·
+`region_stats.py`(product 조회)·`catalog.py`(`run_catalog_publish` 후보 조회)·`backfill.py`
+(`_season_already_published`)에 있어서 전부 `region_code=sido_code`로 좁혔다. 또한 격자에
+500m 여유가 있어 맞닿은 지역끼리 COG가 겹치는 문제(대전·세종처럼)가 있어, `composite.py`가
+그 시도 경계(region level=sido, 32652) 밖 화소를 nodata로 자르도록 했다(2026-10-25).
+
 **완료 기준**: 새 마이그레이션 적용 후 `makemigrations --check` 깨끗함. 관련 테스트 갱신·통과.
+
+**메모(지도 레이어, 2026-10-25)**: `map_layer`의 녹지 마스크·트루컬러 레이어는 지금 `source_params`가
+지역 하나의 COG 경로만 가리킨다(`layers/registry.py`의 `sync_cog_layer`). 다지역이 되면 지역별로
+레이어를 따로 두거나 모자이크(여러 지역 COG를 하나의 타일 서비스로 합치는 것)가 필요하다 —
+이번 단계에서는 손대지 않고, 프론트 단계나 레이어 레지스트리를 다루는 별도 단계에서 처리한다.
 
 ### 6. `satellite_scene` 유일 키 + crime 수집 지역 구분
 

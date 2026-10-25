@@ -9,6 +9,8 @@ from rasterio.features import shapes
 from rasterio.warp import transform_geom
 from scipy import ndimage
 
+from core.areas import get_grid
+
 from .cog import open_cog_writer
 from .composite import ALGO_VERSION
 from .index_scaling import MASK_NODATA, int16_to_index
@@ -91,16 +93,21 @@ def _load_index(product: RasterProduct) -> tuple[np.ndarray, object]:
         return int16_to_index(ds.read(1)), ds.transform
 
 
-def run_change_analysis(year: int, season: str) -> dict:
+def run_change_analysis(year: int, season: str, sido_code: str = "30") -> dict:
     """같은 계절 1·2·3년 전 대비 변화 마스크·폴리곤을 만든다. 과거 비교 대상은 "있는 것만"
-    (이미 게시된 것만) 쓴다(spec 5-4). 현재 계절은 이번 체인에서 막 만든 것(아직 미게시)을 쓴다."""
+    (이미 게시된 것만) 쓴다(spec 5-4). 현재 계절은 이번 체인에서 막 만든 것(아직 미게시)을 쓴다.
+    sido_code(다지역 지원 5단계)로 조회·저장을 그 지역 raster_product로 좁힌다 — 안 그러면
+    다른 지역의 같은 연/계절 산물을 잘못 집어 쓰거나 지워버릴 수 있다."""
     algo_version = ALGO_VERSION
+    grid = get_grid(sido_code)
 
     current_ndvi_product = RasterProduct.objects.filter(
-        product_type="ndvi", year=year, season=season, algo_version=algo_version
+        region_code=sido_code, product_type="ndvi", year=year, season=season,
+        algo_version=algo_version,
     ).first()
     current_ndbi_product = RasterProduct.objects.filter(
-        product_type="ndbi", year=year, season=season, algo_version=algo_version
+        region_code=sido_code, product_type="ndbi", year=year, season=season,
+        algo_version=algo_version,
     ).first()
     if current_ndvi_product is None or current_ndbi_product is None:
         raise ValueError(f"{year} {season} ndvi/ndbi가 아직 없습니다(season_composite 먼저 필요).")
@@ -112,6 +119,7 @@ def run_change_analysis(year: int, season: str) -> dict:
     for offset, period in zip((1, 2, 3), COMPARE_PERIODS):
         past_year = year - offset
         past_ndvi_product = RasterProduct.objects.filter(
+            region_code=sido_code,
             product_type="ndvi",
             year=past_year,
             season=season,
@@ -119,6 +127,7 @@ def run_change_analysis(year: int, season: str) -> dict:
             is_published=True,
         ).first()
         past_ndbi_product = RasterProduct.objects.filter(
+            region_code=sido_code,
             product_type="ndbi",
             year=past_year,
             season=season,
@@ -139,7 +148,7 @@ def run_change_analysis(year: int, season: str) -> dict:
         out_path = (
             current_ndvi_product.cog_path.rsplit("_ndvi.tif", 1)[0] + f"_change_mask_{period}.tif"
         )
-        with open_cog_writer(out_path, 1, "uint8", MASK_NODATA) as dst:
+        with open_cog_writer(out_path, 1, "uint8", MASK_NODATA, grid=grid) as dst:
             encoded = np.where(
                 np.isnan(current_ndvi) | np.isnan(past_ndvi), MASK_NODATA, mask.astype(np.uint8)
             )
@@ -150,6 +159,7 @@ def run_change_analysis(year: int, season: str) -> dict:
 
         with transaction.atomic():
             RasterProduct.objects.filter(
+                region_code=sido_code,
                 product_type="change_mask",
                 year=year,
                 season=season,
@@ -158,6 +168,7 @@ def run_change_analysis(year: int, season: str) -> dict:
             ).delete()
 
             product = RasterProduct.objects.create(
+                region_code=sido_code,
                 product_type="change_mask",
                 year=year,
                 season=season,

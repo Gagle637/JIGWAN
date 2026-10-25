@@ -54,6 +54,9 @@ class RasterProduct(models.Model):
         FALL = "fall", "fall"
         WINTER = "winter", "winter"
 
+    # 기본값을 일부러 안 둔다(다지역 지원 5단계) — 지역 코드 없이 저장하면 안 되므로, 기존
+    # 행을 채우는 "30"은 마이그레이션에만 있고(preserve_default=False) 모델에는 없다.
+    region_code = models.CharField(max_length=2)
     product_type = models.CharField(max_length=20, choices=ProductType.choices)
     year = models.IntegerField()
     season = models.CharField(max_length=10, choices=Season.choices)
@@ -73,7 +76,8 @@ class RasterProduct(models.Model):
         db_table = "raster_product"
         indexes = [
             models.Index(
-                fields=["product_type", "period_start"], name="raster_product_type_period_idx"
+                fields=["region_code", "product_type", "period_start"],
+                name="raster_product_type_period_idx",
             )
         ]
 

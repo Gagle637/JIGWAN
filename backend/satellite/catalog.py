@@ -110,9 +110,12 @@ def validate_and_publish(product: RasterProduct, sido_code: str = "30") -> bool:
 
 
 def run_catalog_publish(year: int, season: str, sido_code: str = "30") -> dict:
-    """이번 체인 실행에서 만들어진(아직 미게시) product들을 전부 독립적으로 검사·게시한다."""
+    """이번 체인 실행에서 만들어진(아직 미게시) product들을 전부 독립적으로 검사·게시한다.
+    sido_code(다지역 지원 5단계)로 후보를 그 지역 raster_product로 좁힌다 — 안 그러면 다른
+    지역의 미게시 product까지 같이 검사·게시해버린다."""
     candidates = RasterProduct.objects.filter(
-        year=year, season=season, algo_version=ALGO_VERSION, is_published=False
+        region_code=sido_code, year=year, season=season, algo_version=ALGO_VERSION,
+        is_published=False,
     )
     published = 0
     rejected = 0

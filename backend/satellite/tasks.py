@@ -41,13 +41,13 @@ def season_composite(self, region_code, year, season, sido_code="30"):
 @shared_task(bind=True, base=TrackedTask, max_retries=3)
 @tracked_job(job_name="change_analysis", lock_ttl_seconds=3600 * 2)
 def change_analysis(self, region_code, year, season, sido_code="30"):
-    return run_change_analysis(year, season)
+    return run_change_analysis(year, season, sido_code)
 
 
 @shared_task(bind=True, base=TrackedTask, max_retries=3)
 @tracked_job(job_name="region_stat", lock_ttl_seconds=3600)
 def region_stat_task(self, region_code, year, season, sido_code="30"):
-    return run_region_stat(year, season)
+    return run_region_stat(year, season, sido_code)
 
 
 @shared_task(bind=True, base=TrackedTask, max_retries=3)

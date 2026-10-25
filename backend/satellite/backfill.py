@@ -105,10 +105,11 @@ def dry_run_list_scenes(seasons: list[tuple[int, str]], sido_code: str = "30") -
 _REQUIRED_PRODUCT_TYPES = {"ndvi", "ndbi", "green_mask", "truecolor"}
 
 
-def _season_already_published(year: int, season: str) -> bool:
+def _season_already_published(year: int, season: str, sido_code: str) -> bool:
     published_types = set(
         RasterProduct.objects.filter(
-            year=year, season=season, algo_version=ALGO_VERSION, is_published=True
+            region_code=sido_code, year=year, season=season, algo_version=ALGO_VERSION,
+            is_published=True,
         ).values_list("product_type", flat=True)
     )
     return _REQUIRED_PRODUCT_TYPES <= published_types
@@ -123,7 +124,7 @@ def run_backfill(seasons: list[tuple[int, str]], sido_code: str = "30") -> list[
     다시 받지 않고 건너뛴다 — 중간에 끊긴 뒤 다시 실행하면 안 끝난 계절부터 이어진다."""
     results = []
     for year, season in seasons:
-        if _season_already_published(year, season):
+        if _season_already_published(year, season, sido_code):
             logger.info("backfill %s-%s 이미 게시됨, 건너뜀", year, season)
             results.append({"season": f"{year}-{season}", "skipped": True})
             continue

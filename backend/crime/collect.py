@@ -33,7 +33,7 @@ def _split_threshold() -> int:
     return min(REQUESTED_FEATURE_COUNT, settings.CRIME_FEATURE_CAP)
 
 
-def _seed_base_grid_if_fully_done() -> bool:
+def _seed_base_grid_if_fully_done(sido_code: str) -> bool:
     """끝나지 않은(= pending/failed) 셀이 있으면 그대로 두고 재개한다. 하나도 없으면(첫 실행 또는
     작년 수집이 전부 끝남) 새 연간 수집으로 보고 격자를 다시 심는다. 반환값은 '새로 심었는지'."""
     unfinished = CrimeFetchProgress.objects.exclude(
@@ -46,7 +46,7 @@ def _seed_base_grid_if_fully_done() -> bool:
     CrimeFetchProgress.objects.bulk_create(
         [
             CrimeFetchProgress(cell_id=grid.cell_id(minx, miny, size_m))
-            for minx, miny, size_m in grid.base_cells()
+            for minx, miny, size_m in grid.base_cells(sido_code)
         ]
     )
     return True
@@ -127,14 +127,15 @@ def _process_cell(client: httpx.Client, progress: CrimeFetchProgress, data_perio
     progress.save(update_fields=["status", "feature_count"])
 
 
-def run_safety_sync(data_period: str) -> dict:
-    """spec 8-4: 대전 전체 격자를 순회해 crime_segment를 채운다. 멱등·재개 가능."""
+def run_safety_sync(data_period: str, sido_code: str = "30") -> dict:
+    """spec 8-4: 지역 전체 격자를 순회해 crime_segment를 채운다. 멱등·재개 가능.
+    sido_code(다지역 지원 3단계)로 대상 지역 격자를 정한다."""
     if not settings.CRIME_FEATURE_CAP:
         raise FeatureCapNotConfigured(
             "CRIME_FEATURE_CAP이 설정되지 않았습니다. probe_crime_feature_cap을 먼저 실행하세요."
         )
 
-    is_fresh_run = _seed_base_grid_if_fully_done()
+    is_fresh_run = _seed_base_grid_if_fully_done(sido_code)
     logger.info("safety_sync 시작: %s", "새 연간 수집" if is_fresh_run else "이전 실행 재개")
 
     # failed는 실행 "시작 시" 한 번만 pending으로 되돌린다(spec 8-4: "다음 실행에서 다시

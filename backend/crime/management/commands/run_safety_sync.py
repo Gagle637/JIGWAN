@@ -16,6 +16,7 @@ class Command(BaseCommand):
             default=None,
             help="예: 2023-07/2024-06. 생략하면 .env의 CRIME_DATA_PERIOD를 쓴다.",
         )
+        parser.add_argument("--sido", default="30", help="수집 대상 시도 코드(기본 30=대전)")
 
     def handle(self, *args, **options):
         if not settings.CRIME_FEATURE_CAP:
@@ -27,9 +28,10 @@ class Command(BaseCommand):
         if not data_period:
             raise CommandError("--data-period 또는 .env의 CRIME_DATA_PERIOD가 필요합니다.")
 
+        sido_code = options["sido"]
         try:
             with tracked_run("safety_sync", "daejeon", lock_ttl_seconds=3600 * 8):
-                summary = run_safety_sync(data_period)
+                summary = run_safety_sync(data_period, sido_code=sido_code)
         except JobSkipped:
             self.stdout.write(self.style.WARNING("다른 수집이 실행 중이라 건너뜀"))
             return

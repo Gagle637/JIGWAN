@@ -8,10 +8,12 @@ import httpx
 from django.conf import settings
 from django.db import connection, transaction
 
+from core.areas import get_sgg_codes
+
 from . import molit_client
 from .matching import build_apt_seq_cache, match_trade
 from .models import Trade
-from .trade_fields import SERVICES, SGG_CODES
+from .trade_fields import SERVICES
 
 logger = logging.getLogger(__name__)
 
@@ -159,15 +161,17 @@ def persist_batch(normalized_rows: list[dict]) -> dict:
     return summary
 
 
-def sync_trades_for_months(months: list[str]) -> dict:
-    """months: ['202610','202609'] 같은 YYYYMM 리스트. 월별로 수집·저장하고 매칭률을 로그로 남긴다."""
+def sync_trades_for_months(months: list[str], sido_code: str = "30") -> dict:
+    """months: ['202610','202609'] 같은 YYYYMM 리스트. 월별로 수집·저장하고 매칭률을 로그로 남긴다.
+    sido_code(다지역 지원 3단계)로 수집 대상 시군구 코드를 정한다."""
     service_key = settings.DATA_GO_KR_API_KEY
     if not service_key:
         raise ValueError("DATA_GO_KR_API_KEY가 설정되지 않았습니다.")
 
+    sgg_codes = get_sgg_codes(sido_code)
     overall = {}
     for deal_ymd in months:
-        normalized_rows = asyncio.run(collect_month(SGG_CODES, deal_ymd, service_key))
+        normalized_rows = asyncio.run(collect_month(sgg_codes, deal_ymd, service_key))
         month_stats = persist_batch(normalized_rows)
         for house_type, stat in month_stats.items():
             logger.info(

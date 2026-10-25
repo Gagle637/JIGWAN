@@ -15,6 +15,25 @@ def _service_area_bbox(db):
     )
 
 
+def test_base_cells_uses_the_given_sido_not_just_daejeon():
+    """SGG_CODES/DAEJEON_BBOX 식 고정값이 아니라 sido_code별로 다른 지역을 써야 한다
+    (다지역 지원 3단계) — 서로 다른 bbox가 겹치지 않는 셀 집합을 돌려주는지 확인한다."""
+    ServiceArea.objects.filter(sido_code="30").update(
+        bbox_minx=127.24, bbox_miny=36.18, bbox_maxx=127.56, bbox_maxy=36.50
+    )
+    ServiceArea.objects.create(
+        sido_code="36", name="테스트지역",
+        bbox_minx=129.0, bbox_miny=35.0, bbox_maxx=129.2, bbox_maxy=35.2,
+    )
+
+    daejeon_cells = set(grid.base_cells("30"))
+    sejong_cells = set(grid.base_cells("36"))
+
+    assert daejeon_cells
+    assert sejong_cells
+    assert daejeon_cells.isdisjoint(sejong_cells)
+
+
 def test_base_cells_cover_daejeon_bbox_with_2km_cells():
     cells = grid.base_cells()
 

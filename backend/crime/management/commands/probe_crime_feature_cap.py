@@ -5,13 +5,15 @@ import httpx
 from django.core.management.base import BaseCommand
 from rasterio.warp import transform
 
+from core.areas import get_bbox
 from crime import grid
 from crime.safemap_client import REQUESTED_FEATURE_COUNT, fetch_feature_info
 
 REQUEST_DELAY_RANGE_SECONDS = (1.0, 2.0)
 
 # 대전 중구 원도심(은행동·중앙로 일대) — 도로·주의구간이 촘촘해 상한에 걸릴 가능성이 큰 지점의
-# 예시 좌표. 다른 지점을 보고 싶으면 --lon/--lat로 바꿀 수 있다.
+# 예시 좌표. 다른 지점을 보고 싶으면 --lon/--lat로 바꿀 수 있다. 대전 외 지역은 --lon/--lat를
+# 안 주면 그 지역 bbox 중심을 쓴다(다지역 지원 3단계, 원도심 같은 의미 있는 지점은 아니다).
 DEFAULT_LON = 127.4258
 DEFAULT_LAT = 36.3262
 
@@ -23,11 +25,27 @@ class Command(BaseCommand):
     )
 
     def add_arguments(self, parser):
-        parser.add_argument("--lon", type=float, default=DEFAULT_LON)
-        parser.add_argument("--lat", type=float, default=DEFAULT_LAT)
+        parser.add_argument(
+            "--sido",
+            default="30",
+            help="좌표를 안 주면 이 지역을 기준으로 중심점을 고른다(기본 30=대전).",
+        )
+        parser.add_argument("--lon", type=float, default=None)
+        parser.add_argument("--lat", type=float, default=None)
 
     def handle(self, *args, **options):
-        (cx,), (cy,) = transform("EPSG:4326", "EPSG:3857", [options["lon"]], [options["lat"]])
+        sido_code = options["sido"]
+        lon, lat = options["lon"], options["lat"]
+        if lon is None or lat is None:
+            if sido_code == "30":
+                lon = lon if lon is not None else DEFAULT_LON
+                lat = lat if lat is not None else DEFAULT_LAT
+            else:
+                minx, miny, maxx, maxy = get_bbox(sido_code)
+                lon = lon if lon is not None else (minx + maxx) / 2
+                lat = lat if lat is not None else (miny + maxy) / 2
+
+        (cx,), (cy,) = transform("EPSG:4326", "EPSG:3857", [lon], [lat])
         half = grid.CELL_SIZE_M / 2
         minx, miny = cx - half, cy - half
 

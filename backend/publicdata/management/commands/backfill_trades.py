@@ -9,6 +9,7 @@ class Command(BaseCommand):
 
     def add_arguments(self, parser):
         parser.add_argument("--months", type=int, default=24)
+        parser.add_argument("--sido", default="30", help="수집 대상 시도 코드(기본 30=대전)")
 
     def handle(self, *args, **options):
         months = months_back(options["months"])
@@ -16,7 +17,7 @@ class Command(BaseCommand):
 
         try:
             with tracked_run("trade_backfill", "daejeon", lock_ttl_seconds=3600 * 6):
-                overall = sync_trades_for_months(months)
+                overall = sync_trades_for_months(months, sido_code=options["sido"])
         except JobSkipped:
             self.stdout.write(self.style.WARNING("다른 백필이 실행 중이라 건너뜀"))
             return

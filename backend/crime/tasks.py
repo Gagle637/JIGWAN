@@ -10,11 +10,14 @@ from .registry import crime_layer_id
 
 @shared_task(bind=True, base=TrackedTask, max_retries=3)
 @tracked_job(job_name="safety_sync", lock_ttl_seconds=3600 * 8)
-def safety_sync(self, region_code="daejeon", data_period=None):
+def safety_sync(self, region_code="daejeon", data_period=None, sido_code="30"):
     """spec 5-1: 매년 1월 첫째 주 + 수동, io 큐. 셀 단위 재시도는 collect.py 안에서 처리하므로
-    여기서는 index_run 기록·잠금만 담당한다(개별 셀 실패는 전체 잡을 죽이지 않음)."""
+    여기서는 index_run 기록·잠금만 담당한다(개별 셀 실패는 전체 잡을 죽이지 않음).
+
+    region_code는 잠금/index_run 키(7단계까지 "daejeon" 유지), sido_code는 실제 수집 대상
+    지역(다지역 지원 3단계) — 둘을 분리해 둬야 잠금 키를 바꾸지 않고도 지역을 바꿀 수 있다."""
     period = data_period or settings.CRIME_DATA_PERIOD
-    result = run_safety_sync(period)
+    result = run_safety_sync(period, sido_code=sido_code)
 
     layer_id = crime_layer_id()
     if layer_id is not None:

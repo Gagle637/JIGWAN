@@ -24,7 +24,7 @@ class Command(BaseCommand):
         parser.add_argument("--skip-crime", action="store_true")
         parser.add_argument("--trade-months", type=int, default=24)
         parser.add_argument(
-            "--sido", default="30", help="위성 수집 대상 시도 코드(기본 30=대전)"
+            "--sido", default="30", help="위성·실거래·범죄 수집 대상 시도 코드(기본 30=대전)"
         )
 
     def handle(self, *args, **options):
@@ -64,7 +64,7 @@ class Command(BaseCommand):
             months = months_back(options["trade_months"])
             try:
                 with tracked_run("trade_backfill", "daejeon", lock_ttl_seconds=3600 * 6):
-                    sync_trades_for_months(months)
+                    sync_trades_for_months(months, sido_code=sido_code)
                 self.stdout.write(self.style.SUCCESS("실거래 백필 완료"))
             except JobSkipped:
                 self.stdout.write(self.style.WARNING("실거래 백필: 다른 실행 중이라 건너뜀"))
@@ -81,7 +81,7 @@ class Command(BaseCommand):
             else:
                 try:
                     with tracked_run("safety_sync", "daejeon", lock_ttl_seconds=3600 * 8):
-                        run_crime_backfill(settings.CRIME_DATA_PERIOD)
+                        run_crime_backfill(settings.CRIME_DATA_PERIOD, sido_code=sido_code)
                     self.stdout.write(self.style.SUCCESS("범죄주의구간 백필 완료"))
                 except JobSkipped:
                     self.stdout.write(

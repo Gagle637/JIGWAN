@@ -1,5 +1,6 @@
 import pytest
 
+import publicdata.sync as sync_module
 from publicdata.models import Trade
 from publicdata.sync import (
     current_and_previous_month,
@@ -85,6 +86,7 @@ def test_sync_trades_for_months_requires_api_key(settings):
 @pytest.mark.django_db
 def test_sync_trades_for_months_collects_and_persists(monkeypatch, settings):
     settings.DATA_GO_KR_API_KEY = "fake-key"
+    monkeypatch.setattr(sync_module, "get_sgg_codes", lambda sido_code: ["30110"])
 
     async def fake_collect_month(sgg_codes, deal_ymd, service_key):
         return [_row(deal_ym="2026-09")]
@@ -95,6 +97,33 @@ def test_sync_trades_for_months_collects_and_persists(monkeypatch, settings):
 
     assert "202609" in overall
     assert Trade.objects.filter(deal_ym="2026-09").count() == 1
+
+
+@pytest.mark.django_db
+def test_sync_trades_for_months_uses_get_sgg_codes_for_the_given_sido(monkeypatch, settings):
+    """SGG_CODES 고정 목록 대신 core.areas.get_sgg_codes(sido_code)로 대상 시군구를
+    구해야 한다(다지역 지원 3단계) — 어떤 sido를 넘겼는지, 그 결과가 collect_month에
+    그대로 전달되는지 확인한다."""
+    settings.DATA_GO_KR_API_KEY = "fake-key"
+    requested_sido = []
+    monkeypatch.setattr(
+        sync_module,
+        "get_sgg_codes",
+        lambda sido_code: requested_sido.append(sido_code) or ["99110", "99140"],
+    )
+
+    received_sgg_codes = []
+
+    async def fake_collect_month(sgg_codes, deal_ymd, service_key):
+        received_sgg_codes.append(sgg_codes)
+        return []
+
+    monkeypatch.setattr("publicdata.sync.collect_month", fake_collect_month)
+
+    sync_trades_for_months(["202609"], sido_code="99")
+
+    assert requested_sido == ["99"]
+    assert received_sgg_codes == [["99110", "99140"]]
 
 
 def test_current_and_previous_month_format():

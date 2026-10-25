@@ -7,8 +7,6 @@ from datetime import datetime
 from .models import Trade
 from .pnu import build_pnu_from_apt_sale
 
-SGG_CODES = ["30110", "30140", "30170", "30200", "30230"]  # 대전 5개 구
-
 
 def _clean(value) -> str | None:
     if value is None:

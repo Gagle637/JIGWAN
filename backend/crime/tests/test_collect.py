@@ -35,7 +35,7 @@ def test_run_safety_sync_requires_feature_cap_configured(settings):
 
 def test_run_safety_sync_saves_features_for_a_single_small_grid(monkeypatch, settings):
     settings.CRIME_FEATURE_CAP = 100
-    monkeypatch.setattr(grid, "base_cells", lambda: [(0.0, 0.0, 2000.0)])
+    monkeypatch.setattr(grid, "base_cells", lambda sido_code="30": [(0.0, 0.0, 2000.0)])
     monkeypatch.setattr(
         collect,
         "fetch_feature_info",
@@ -58,7 +58,7 @@ def test_run_safety_sync_saves_features_for_a_single_small_grid(monkeypatch, set
 
 def test_run_safety_sync_splits_cell_at_feature_cap_and_processes_children(monkeypatch, settings):
     settings.CRIME_FEATURE_CAP = 2
-    monkeypatch.setattr(grid, "base_cells", lambda: [(0.0, 0.0, 2000.0)])
+    monkeypatch.setattr(grid, "base_cells", lambda sido_code="30": [(0.0, 0.0, 2000.0)])
 
     calls = []
 
@@ -91,7 +91,7 @@ def test_run_safety_sync_resumes_only_unfinished_cells_and_cleans_stale_segments
 ):
     settings.CRIME_FEATURE_CAP = 100
     monkeypatch.setattr(
-        grid, "base_cells", lambda: [(0.0, 0.0, 2000.0), (2000.0, 0.0, 2000.0)]
+        grid, "base_cells", lambda sido_code="30": [(0.0, 0.0, 2000.0), (2000.0, 0.0, 2000.0)]
     )
 
     # 이전 실행에서 하나는 이미 done, 하나는 pending으로 중단된 상태를 흉내낸다.
@@ -131,7 +131,7 @@ def test_run_safety_sync_resumes_only_unfinished_cells_and_cleans_stale_segments
 def test_run_safety_sync_dedupes_segment_seen_in_multiple_cells(monkeypatch, settings):
     settings.CRIME_FEATURE_CAP = 100
     monkeypatch.setattr(
-        grid, "base_cells", lambda: [(0.0, 0.0, 2000.0), (2000.0, 0.0, 2000.0)]
+        grid, "base_cells", lambda sido_code="30": [(0.0, 0.0, 2000.0), (2000.0, 0.0, 2000.0)]
     )
     monkeypatch.setattr(
         collect,
@@ -149,7 +149,7 @@ def test_run_safety_sync_marks_cell_failed_after_retries_but_continues_other_cel
 ):
     settings.CRIME_FEATURE_CAP = 100
     monkeypatch.setattr(
-        grid, "base_cells", lambda: [(0.0, 0.0, 2000.0), (2000.0, 0.0, 2000.0)]
+        grid, "base_cells", lambda sido_code="30": [(0.0, 0.0, 2000.0), (2000.0, 0.0, 2000.0)]
     )
 
     def fake_fetch(client, bbox, count):

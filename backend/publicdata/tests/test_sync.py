@@ -80,7 +80,7 @@ def test_persist_batch_skips_rows_without_deal_ym():
 def test_sync_trades_for_months_requires_api_key(settings):
     settings.DATA_GO_KR_API_KEY = ""
     with pytest.raises(ValueError):
-        sync_trades_for_months(["202609"])
+        sync_trades_for_months(["202609"], sido_code="30")
 
 
 @pytest.mark.django_db
@@ -93,7 +93,7 @@ def test_sync_trades_for_months_collects_and_persists(monkeypatch, settings):
 
     monkeypatch.setattr("publicdata.sync.collect_month", fake_collect_month)
 
-    overall = sync_trades_for_months(["202609"])
+    overall = sync_trades_for_months(["202609"], sido_code="30")
 
     assert "202609" in overall
     assert Trade.objects.filter(deal_ym="2026-09").count() == 1

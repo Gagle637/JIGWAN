@@ -186,3 +186,25 @@ def test_tracked_run_failure_records_failed_and_propagates(monkeypatch):
     run.refresh_from_db()
     assert run.status == IndexRun.Status.FAILED
     assert "boom" in run.error
+
+
+# ---- 다지역 지원 7단계: 잠금 키가 job+지역 조합이라 지역끼리 서로 안 막는지(실제 Redis) ----
+
+
+def test_two_regions_running_the_same_job_do_not_block_each_other():
+    """대전(30)과 세종(36)이 같은 작업(job)을 동시에 돌려도 서로의 잠금에 막히면 안 된다 —
+    잠금 키가 job:region_code 조합이라 지역마다 독립적이어야 한다(실제 Redis 잠금으로 확인,
+    모킹 아님)."""
+    with tracked_run("multi_region_job", "30") as run_daejeon:
+        assert run_daejeon.status == IndexRun.Status.RUNNING
+        with tracked_run("multi_region_job", "36") as run_sejong:
+            assert run_sejong.status == IndexRun.Status.RUNNING
+
+
+def test_same_region_running_the_same_job_twice_is_skipped():
+    """같은 지역·같은 job을 중첩해서 또 돌리면(이미 실행 중) 건너뛰어야 한다 — 위 테스트가
+    "다른 지역이라 안 막힘"을 보여주는 것과 대조해, 잠금이 실제로 걸리는지 같이 확인한다."""
+    with tracked_run("multi_region_job_dup", "30"):
+        with pytest.raises(JobSkipped):
+            with tracked_run("multi_region_job_dup", "30"):
+                pass

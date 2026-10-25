@@ -1,6 +1,15 @@
 from datetime import date
 
-from satellite.tasks import _season_just_ended, build_season_chain
+import pytest
+
+from core.models import ServiceArea
+from satellite.tasks import (
+    _season_just_ended,
+    build_season_chain,
+    satellite_collect,
+    trigger_satellite_collect_for_enabled_regions,
+    trigger_season_chain_for_last_season,
+)
 
 
 def _all_signatures(canvas):
@@ -26,7 +35,7 @@ def _all_signatures(canvas):
 def test_build_season_chain_uses_immutable_signatures():
     """체인 서명이 전부 immutable이라 앞 단계 결과/group 결과 리스트가 전달되지 않는지
     확인한다(결정 사항 3)."""
-    canvas = build_season_chain(2026, "summer")
+    canvas = build_season_chain(2026, "summer", "30")
 
     sigs = _all_signatures(canvas)
 
@@ -35,7 +44,7 @@ def test_build_season_chain_uses_immutable_signatures():
 
 
 def test_build_season_chain_passes_explicit_args():
-    canvas = build_season_chain(2026, "summer")
+    canvas = build_season_chain(2026, "summer", "30")
     sigs = _all_signatures(canvas)
     for sig in sigs:
         assert sig.args == ("30:2026:summer", 2026, "summer", "30")
@@ -49,3 +58,46 @@ def test_season_just_ended_other_seasons():
     assert _season_just_ended(date(2026, 6, 15)) == (2026, "spring")
     assert _season_just_ended(date(2026, 9, 15)) == (2026, "summer")
     assert _season_just_ended(date(2026, 12, 15)) == (2026, "fall")
+
+
+# ---- 다지역 지원 7단계: 디스패처가 활성 지역만 돈다 ----
+
+
+@pytest.mark.django_db
+def test_trigger_satellite_collect_dispatches_only_enabled_regions(monkeypatch):
+    """지금까지 한 번도 Beat에 등록된 적 없던 satellite_collect가, 활성 지역(service_area,
+    enabled=True)마다 하나씩 디스패치되는지 확인한다. 비활성 지역은 건너뛰어야 한다."""
+    ServiceArea.objects.create(sido_code="36", name="세종", enabled=True)
+    ServiceArea.objects.create(sido_code="41", name="비활성", enabled=False)
+
+    delay_calls = []
+    monkeypatch.setattr(satellite_collect, "delay", lambda sido_code: delay_calls.append(sido_code))
+
+    trigger_satellite_collect_for_enabled_regions()
+
+    assert sorted(delay_calls) == ["30", "36"]
+
+
+@pytest.mark.django_db
+def test_trigger_season_chain_for_last_season_dispatches_only_enabled_regions(monkeypatch):
+    """분기 트리거가 활성 지역마다 하나씩 체인을 돌리는지, 비활성 지역은 건너뛰는지 확인한다."""
+    ServiceArea.objects.create(sido_code="36", name="세종", enabled=True)
+    ServiceArea.objects.create(sido_code="41", name="비활성", enabled=False)
+
+    monkeypatch.setattr("satellite.tasks._season_just_ended", lambda today: (2026, "summer"))
+
+    built_for = []
+
+    class _FakeCanvas:
+        def apply_async(self):
+            pass
+
+    def fake_build_season_chain(year, season, sido_code):
+        built_for.append(sido_code)
+        return _FakeCanvas()
+
+    monkeypatch.setattr("satellite.tasks.build_season_chain", fake_build_season_chain)
+
+    trigger_season_chain_for_last_season()
+
+    assert sorted(built_for) == ["30", "36"]

@@ -128,7 +128,36 @@ scene_id만으로 "지워도 되는 장면"을 모아서, 한 지역의 오래�
 
 **완료 기준**: 두 지역이 같은 `scene_id`를 가져도 DB에서 별개로 저장되는 테스트. 전체 pytest 통과.
 
-### 7. 잠금·index_run 지역화 + 정기 배치 다지역화
+### 7. 잠금·index_run 지역화 + 정기 배치 다지역화 — 완료(2026-10-25)
+
+**실제로 한 일 요약**: 내부 함수(`composite·catalog·collect·backfill·season_chain·
+region_stats·change_detection`, `publicdata/sync.sync_trades_for_months`,
+`crime/{grid,collect}`, `buildings/{building_loading,region_loading}`)의
+`sido_code="30"` 기본값을 전부 제거(필수 인자화). `satellite_collect`(지금까지 Beat에
+한 번도 등록된 적 없었음 — `seed_collect_schedule.py` 신설, 5일마다 02:00 크론 앵커
+`1,6,11,16,21,26,31`), `trade_sync`, `safety_sync`에 각각 디스패처 태스크
+(`trigger_*_for_enabled_regions`)를 만들어 `ServiceArea.objects.filter(enabled=True)`를
+돌게 하고, 기존 Beat 등록(`seed_trade_schedule.py`·`seed_safety_schedule.py`)이 그
+디스패처를 가리키도록 교체. `safety_sync`의 `region_code`(잠금 키)·`sido_code`(실제
+지역) 두 인자를 `sido_code` 하나로 통합. 모든 `tracked_run`/`tracked_job`의
+`"daejeon"` 고정 문자열을 시도 코드로 교체(지역이 아닌 전역 잡 `cleanup_scene_cogs_task`·
+`cleanup_index_runs_task`는 `"global"`로). `--sido`가 있는 관리 명령 8개
+(`collect_scenes`·`run_season_chain`·`backfill`(satellite)·`backfill_trades`·
+`run_safety_sync`·`load_buildings`·`load_regions`·`probe_crime_feature_cap`) 전부
+생략 시 활성 지역 전체를 도는 루프로 바꿈(한 지역 실패가 다른 지역을 막지 않음).
+`probe_crime_feature_cap`은 대전 외 지역에서 bbox 중심 대신 건물이 가장 많은 시군구의
+건물 중심점을 쓰도록 교체. 새 디스패처 3개를 `CELERY_TASK_ROUTES`(io 큐)에 등록.
+
+구현하며 `season_chain.run_season_chain_sync`가 `run_change_analysis`/`run_region_stat`
+호출에 `sido_code`를 안 넘기던 버그(5단계에서 파라미터만 추가하고 호출부를 안 고침)도
+발견해 같이 고쳤다.
+
+**완료 기준 확인**: 비활성 지역 스킵(`trigger_*` 디스패처 3개 + `run_safety_sync`/
+`load_buildings` 명령 테스트), 지역 코드 없이 내부 함수를 부르면 `TypeError`(시그니처
+자체가 강제), 대전·세종 같은 작업이 서로 잠금에 안 막힘(실제 Redis 잠금, `core/tests/
+test_jobs.py`). 전체 pytest 통과(476개).
+
+### 7(원래 문서, 참고용)
 
 **위성 쪽은 2단계에서 완료.** `backend/satellite/tasks.py`·`season_chain.py`·
 `management/commands/backfill.py`·`collect_scenes.py`·`run_season_chain.py`는 이미

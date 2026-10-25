@@ -143,7 +143,7 @@ def _process_cell(client: httpx.Client, progress: CrimeFetchProgress, data_perio
     return fetched_objt_ids
 
 
-def run_safety_sync(data_period: str, sido_code: str = "30") -> dict:
+def run_safety_sync(data_period: str, sido_code: str) -> dict:
     """spec 8-4: 지역 전체 격자를 순회해 crime_segment를 채운다. 멱등·재개 가능.
     sido_code(다지역 지원 3단계)로 대상 지역 격자를 정한다."""
     if not settings.CRIME_FEATURE_CAP:

@@ -40,6 +40,16 @@ def get_grid(sido_code: str) -> dict:
     return area.grid
 
 
+def enabled_sido_codes() -> list[str]:
+    """활성화된(enabled=True) 지역의 시도 코드 목록(다지역 지원 7단계) — Beat 디스패처
+    태스크와, `--sido`를 생략한 관리 명령이 이 목록을 돈다."""
+    return list(
+        ServiceArea.objects.filter(enabled=True).order_by("sido_code").values_list(
+            "sido_code", flat=True
+        )
+    )
+
+
 def get_sgg_codes(sido_code: str) -> list[str]:
     """region(level=sigungu)에서 실시간으로 조회한다(저장 안 함 — 다시 적재하면 바로 반영).
     비어 있으면 에러로 알린다(경계 미적재 상태에서 실거래 수집이 조용히 0건으로 끝나지 않게)."""

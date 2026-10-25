@@ -1,6 +1,7 @@
 from django.conf import settings
-from django.core.management.base import BaseCommand
+from django.core.management.base import BaseCommand, CommandError
 
+from core.areas import enabled_sido_codes
 from core.jobs import JobSkipped, tracked_run
 from crime.collect import FeatureCapNotConfigured
 from crime.collect import run_safety_sync as run_crime_backfill
@@ -11,7 +12,8 @@ from satellite.backfill import dry_run_list_scenes, run_backfill, target_seasons
 class Command(BaseCommand):
     help = (
         "초기 적재 백필(spec 4장): 13개 계절 위성 분석 + 공공데이터(실거래·범죄주의구간). "
-        "건물·행정경계(1단계)는 load_buildings/load_regions를 먼저 따로 실행해야 한다."
+        "건물·행정경계(1단계)는 load_buildings/load_regions를 먼저 따로 실행해야 한다. "
+        "--sido를 생략하면 활성화된 지역(service_area) 전체를 돈다."
     )
 
     def add_arguments(self, parser):
@@ -24,11 +26,24 @@ class Command(BaseCommand):
         parser.add_argument("--skip-crime", action="store_true")
         parser.add_argument("--trade-months", type=int, default=24)
         parser.add_argument(
-            "--sido", default="30", help="위성·실거래·범죄 수집 대상 시도 코드(기본 30=대전)"
+            "--sido",
+            default=None,
+            help="위성·실거래·범죄 수집 대상 시도 코드(생략하면 활성화된 지역 전체)",
         )
 
     def handle(self, *args, **options):
-        sido_code = options["sido"]
+        if options["sido"]:
+            sido_codes = [options["sido"]]
+        else:
+            sido_codes = enabled_sido_codes()
+            if not sido_codes:
+                raise CommandError("활성화된 지역(service_area, enabled=True)이 없습니다.")
+
+        for sido_code in sido_codes:
+            self.stdout.write(self.style.SUCCESS(f"\n######## 지역: {sido_code} ########"))
+            self._run_for_region(sido_code, options)
+
+    def _run_for_region(self, sido_code, options):
         seasons = target_seasons()
         self.stdout.write(
             f"대상 계절({len(seasons)}개): {seasons[0][0]}-{seasons[0][1]} ~ "
@@ -48,7 +63,7 @@ class Command(BaseCommand):
         )
 
         if options["dry_run"]:
-            self.stdout.write("--dry-run이라 여기서 끝냅니다.")
+            self.stdout.write("--dry-run이라 이 지역은 여기서 끝냅니다.")
             return
 
         self.stdout.write("\n=== 3·4·5단계: 계절별 수집·합성·변화·기준선·게시 ===")
@@ -63,7 +78,7 @@ class Command(BaseCommand):
             self.stdout.write("\n=== 6단계: 실거래 백필 ===")
             months = months_back(options["trade_months"])
             try:
-                with tracked_run("trade_backfill", "daejeon", lock_ttl_seconds=3600 * 6):
+                with tracked_run("trade_backfill", sido_code, lock_ttl_seconds=3600 * 6):
                     sync_trades_for_months(months, sido_code=sido_code)
                 self.stdout.write(self.style.SUCCESS("실거래 백필 완료"))
             except JobSkipped:
@@ -80,7 +95,7 @@ class Command(BaseCommand):
                 )
             else:
                 try:
-                    with tracked_run("safety_sync", "daejeon", lock_ttl_seconds=3600 * 8):
+                    with tracked_run("safety_sync", sido_code, lock_ttl_seconds=3600 * 8):
                         run_crime_backfill(settings.CRIME_DATA_PERIOD, sido_code=sido_code)
                     self.stdout.write(self.style.SUCCESS("범죄주의구간 백필 완료"))
                 except JobSkipped:

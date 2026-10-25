@@ -35,7 +35,7 @@ def test_base_cells_uses_the_given_sido_not_just_daejeon():
 
 
 def test_base_cells_cover_daejeon_bbox_with_2km_cells():
-    cells = grid.base_cells()
+    cells = grid.base_cells("30")
 
     assert cells  # 대전 bbox를 덮는 셀이 적어도 하나는 있어야 한다
     for minx, miny, size_m in cells:
@@ -46,7 +46,7 @@ def test_base_cells_cover_daejeon_bbox_with_2km_cells():
 
 
 def test_base_cells_are_unique():
-    cells = grid.base_cells()
+    cells = grid.base_cells("30")
     ids = [grid.cell_id(minx, miny, size_m) for minx, miny, size_m in cells]
 
     assert len(ids) == len(set(ids))

@@ -174,7 +174,7 @@ def test_load_regions_sido_without_path_requires_no_file(monkeypatch):
 
 def test_load_regions_non_sido_without_path_raises():
     with pytest.raises(ValueError, match="path"):
-        load_regions(None, level="bjd")
+        load_regions(None, level="bjd", sido_prefix="30")
 
 
 # ---- load_sido_from_sigungu_union: 이미 적재된 시군구를 union해서 시도를 만든다 ----

@@ -187,7 +187,7 @@ def build_season_composite(
     }
 
 
-def run_season_composite(year: int, season: str, sido_code: str = "30") -> dict:
+def run_season_composite(year: int, season: str, sido_code: str) -> dict:
     """status=ready 장면만 모아 합성하고, raster_product 4행(ndvi·ndbi·green_mask·truecolor)을
     "교체"(같은 product_type·year·season·algo_version 삭제 후 재생성)로 등록한다(spec 5-2).
     sido_code(다지역 지원 2단계)로 격자·bbox를 정한다."""

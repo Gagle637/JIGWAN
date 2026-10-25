@@ -70,7 +70,7 @@ def test_dry_run_list_scenes_creates_listed_rows_and_skips_existing(monkeypatch)
 
     monkeypatch.setattr(backfill_module, "search_scenes", fake_search_scenes)
 
-    summary = backfill_module.dry_run_list_scenes([(2023, "summer")])
+    summary = backfill_module.dry_run_list_scenes([(2023, "summer")], sido_code="30")
 
     assert summary["total_new_scenes"] == 1
     assert summary["estimated_download_mb"] == backfill_module.ESTIMATED_MB_PER_SCENE
@@ -108,7 +108,7 @@ def test_run_backfill_skips_season_already_fully_published(monkeypatch):
     monkeypatch.setattr(backfill_module, "run_season_chain_sync", fail_if_called)
 
 
-    results = backfill_module.run_backfill([(2023, "summer")])
+    results = backfill_module.run_backfill([(2023, "summer")], sido_code="30")
 
     assert results == [{"season": "2023-summer", "skipped": True}]
 
@@ -151,7 +151,7 @@ def test_run_backfill_processes_unfinished_season(monkeypatch):
         lambda year, season, sido_code="30": calls.append((year, season)) or {"catalog_publish": "ok"},
     )
 
-    results = backfill_module.run_backfill([(2023, "summer")])
+    results = backfill_module.run_backfill([(2023, "summer")], sido_code="30")
 
     assert calls == [(2023, "summer")]
     assert results[0]["season"] == "2023-summer"

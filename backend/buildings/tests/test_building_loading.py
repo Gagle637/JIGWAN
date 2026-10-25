@@ -26,25 +26,27 @@ def test_resolve_building_zip_path_picks_latest_by_filename_date(tmp_path, monke
     (tmp_path / "AL_D010_30_20261009.zip").touch()
     (tmp_path / "AL_D010_30_20240601.zip").touch()
 
-    resolved = building_loading.resolve_building_zip_path(None)
+    resolved = building_loading.resolve_building_zip_path(None, sido_code="30")
     assert resolved.name == "AL_D010_30_20261009.zip"
 
 
 def test_resolve_building_zip_path_uses_explicit_path(tmp_path):
     explicit = tmp_path / "custom.zip"
     explicit.touch()
-    assert building_loading.resolve_building_zip_path(str(explicit)) == explicit
+    assert (
+        building_loading.resolve_building_zip_path(str(explicit), sido_code="30") == explicit
+    )
 
 
 def test_resolve_building_zip_path_missing_explicit_raises(tmp_path):
     with pytest.raises(FileNotFoundError):
-        building_loading.resolve_building_zip_path(str(tmp_path / "nope.zip"))
+        building_loading.resolve_building_zip_path(str(tmp_path / "nope.zip"), sido_code="30")
 
 
 def test_resolve_building_zip_path_no_candidates_raises(tmp_path, monkeypatch):
     monkeypatch.setattr(building_loading, "DATA_RAW_DIR", tmp_path)
     with pytest.raises(FileNotFoundError):
-        building_loading.resolve_building_zip_path(None)
+        building_loading.resolve_building_zip_path(None, sido_code="30")
 
 
 # ---- resolve_vsizip_shp_path: zip 파일명이 아니라 실제 안의 .shp를 찾아야 한다 ----
@@ -180,7 +182,7 @@ def test_load_buildings_skips_when_source_date_unchanged(monkeypatch, tmp_path):
     zip_path = _make_zip(tmp_path / "AL_D010_30_20261006.zip")
 
     with pytest.raises(SkipJob):
-        building_loading.load_buildings(zip_path)
+        building_loading.load_buildings(zip_path, sido_code="30")
 
 
 @pytest.mark.django_db
@@ -191,7 +193,7 @@ def test_load_buildings_upsert_preserves_id_and_soft_deletes_missing(monkeypatch
         "pyogrio.read_dataframe", lambda *a, **k: _tiny_gdf(date(2026, 1, 1))
     )
     zip1 = _make_zip(tmp_path / "AL_D010_30_20260101.zip")
-    building_loading.load_buildings(zip1)
+    building_loading.load_buildings(zip1, sido_code="30")
 
     building = Building.objects.get(building_key="GISID001")
     first_id = building.id
@@ -204,7 +206,7 @@ def test_load_buildings_upsert_preserves_id_and_soft_deletes_missing(monkeypatch
         ),
     )
     zip2 = _make_zip(tmp_path / "AL_D010_30_20260401.zip")
-    building_loading.load_buildings(zip2)
+    building_loading.load_buildings(zip2, sido_code="30")
 
     building.refresh_from_db()
     assert building.id == first_id
@@ -218,7 +220,7 @@ def test_load_buildings_upsert_preserves_id_and_soft_deletes_missing(monkeypatch
         "pyogrio.read_dataframe", lambda *a, **k: _tiny_gdf(date(2026, 7, 1))
     )
     zip3 = _make_zip(tmp_path / "AL_D010_30_20260701.zip")
-    building_loading.load_buildings(zip3)
+    building_loading.load_buildings(zip3, sido_code="30")
 
     building.refresh_from_db()
     assert building.id == first_id
@@ -314,7 +316,7 @@ def test_load_buildings_works_when_zip_filename_has_extra_suffix(monkeypatch, tm
 
     monkeypatch.setattr("pyogrio.read_dataframe", fake_read_dataframe)
 
-    building_loading.load_buildings(zip_path)
+    building_loading.load_buildings(zip_path, sido_code="30")
 
     assert captured_vsi_paths == [f"/vsizip/{zip_path.resolve()}/AL_D010_30_20261009.shp"]
     assert Building.objects.filter(building_key="GISID001").exists()

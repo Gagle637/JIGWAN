@@ -18,6 +18,9 @@ def healthcheck_ping(self, region_code):
 
 @shared_task(bind=True, base=TrackedTask, max_retries=3)
 @tracked_job(job_name="cleanup_index_runs", lock_ttl_seconds=3600)
-def cleanup_index_runs_task(self, region_code="daejeon"):
-    """spec 5-4: index_run 1년 보관. 주 1회(Beat, cpu 큐)."""
+def cleanup_index_runs_task(self, region_code="global"):
+    """spec 5-4: index_run 1년 보관. 주 1회(Beat, cpu 큐).
+
+    지역별 작업이 아니다 — region_code는 실제 지역이 아니라 이 전역 잡의 잠금/index_run
+    식별자일 뿐이다(다지역 지원 7단계: "daejeon"은 오해를 줄 수 있어 "global"로 바꿈)."""
     return {"deleted": cleanup_old_index_runs()}

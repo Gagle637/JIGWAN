@@ -16,7 +16,7 @@ class Command(BaseCommand):
             defaults={
                 "task": "core.tasks.healthcheck_ping",
                 "interval": schedule,
-                "kwargs": json.dumps({"region_code": "daejeon"}),
+                "kwargs": json.dumps({"region_code": "global"}),
                 "enabled": True,
             },
         )

@@ -14,7 +14,7 @@ def cell_id(minx: float, miny: float, size_m: float) -> str:
     return f"{int(round(minx))}_{int(round(miny))}_{int(round(size_m))}"
 
 
-def base_cells(sido_code: str = "30") -> list[tuple[float, float, float]]:
+def base_cells(sido_code: str) -> list[tuple[float, float, float]]:
     """지역 bbox(4326)를 EPSG:3857로 바꿔 2km 배수로 바깥쪽 스냅한 기본 격자(다지역 지원 3단계)."""
     minx, miny, maxx, maxy = transform_bounds("EPSG:4326", "EPSG:3857", *get_bbox(sido_code))
     minx = math.floor(minx / CELL_SIZE_M) * CELL_SIZE_M

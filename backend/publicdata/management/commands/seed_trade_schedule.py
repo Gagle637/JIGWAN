@@ -3,7 +3,10 @@ from django_celery_beat.models import CrontabSchedule, PeriodicTask
 
 
 class Command(BaseCommand):
-    help = "trade_sync를 매일 04:00(KST)에 실행하도록 Beat에 등록한다(spec 5-1)."
+    help = (
+        "활성 지역(service_area, enabled=True)마다 trade_sync를 매일 04:00(KST)에 "
+        "실행하도록 Beat에 등록한다(spec 5-1, 다지역 지원 7단계)."
+    )
 
     def handle(self, *args, **options):
         schedule, _ = CrontabSchedule.objects.get_or_create(
@@ -12,7 +15,7 @@ class Command(BaseCommand):
         task, created = PeriodicTask.objects.update_or_create(
             name="publicdata.trade_sync.daily",
             defaults={
-                "task": "publicdata.tasks.trade_sync",
+                "task": "publicdata.tasks.trigger_trade_sync_for_enabled_regions",
                 "crontab": schedule,
                 "kwargs": "{}",
                 "enabled": True,

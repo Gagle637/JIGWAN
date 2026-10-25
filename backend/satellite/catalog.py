@@ -74,7 +74,7 @@ def _measure_valid_ratio(ds, nodata, sido_code: str) -> float:
     return float(np.count_nonzero(valid) / band.size)
 
 
-def validate_and_publish(product: RasterProduct, sido_code: str = "30") -> bool:
+def validate_and_publish(product: RasterProduct, sido_code: str) -> bool:
     """결정 사항 11의 세 검사(격자 일치·값 범위·유효 비율)를 수행하고, 전부 통과하면
     is_published=True로 저장한다. valid_ratio는 통과 여부와 무관하게 측정값을 그대로 기록한다.
     sido_code(다지역 지원 2단계)로 비교할 격자·AOI를 정한다."""
@@ -109,7 +109,7 @@ def validate_and_publish(product: RasterProduct, sido_code: str = "30") -> bool:
     return passed
 
 
-def run_catalog_publish(year: int, season: str, sido_code: str = "30") -> dict:
+def run_catalog_publish(year: int, season: str, sido_code: str) -> dict:
     """이번 체인 실행에서 만들어진(아직 미게시) product들을 전부 독립적으로 검사·게시한다.
     sido_code(다지역 지원 5단계)로 후보를 그 지역 raster_product로 좁힌다 — 안 그러면 다른
     지역의 미게시 product까지 같이 검사·게시해버린다."""

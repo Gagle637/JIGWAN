@@ -161,7 +161,7 @@ def persist_batch(normalized_rows: list[dict]) -> dict:
     return summary
 
 
-def sync_trades_for_months(months: list[str], sido_code: str = "30") -> dict:
+def sync_trades_for_months(months: list[str], sido_code: str) -> dict:
     """months: ['202610','202609'] 같은 YYYYMM 리스트. 월별로 수집·저장하고 매칭률을 로그로 남긴다.
     sido_code(다지역 지원 3단계)로 수집 대상 시군구 코드를 정한다."""
     service_key = settings.DATA_GO_KR_API_KEY

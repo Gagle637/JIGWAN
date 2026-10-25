@@ -82,7 +82,7 @@ def test_publishes_when_valid_ratio_above_threshold(tmp_path):
 
     product = _make_product(tmp_path, "ndvi", array, "int16", INDEX_NODATA, "ndvi_ok")
 
-    result = validate_and_publish(product)
+    result = validate_and_publish(product, "30")
 
     product.refresh_from_db()
     assert result is True
@@ -100,7 +100,7 @@ def test_rejects_when_valid_ratio_below_threshold(tmp_path):
 
     product = _make_product(tmp_path, "ndvi", array, "int16", INDEX_NODATA, "ndvi_low")
 
-    result = validate_and_publish(product)
+    result = validate_and_publish(product, "30")
 
     product.refresh_from_db()
     assert result is False
@@ -118,7 +118,7 @@ def test_rejects_value_out_of_range_for_ndvi(tmp_path):
 
     product = _make_product(tmp_path, "ndvi", array, "int16", INDEX_NODATA, "ndvi_bad_range")
 
-    result = validate_and_publish(product)
+    result = validate_and_publish(product, "30")
 
     product.refresh_from_db()
     assert result is False
@@ -131,7 +131,7 @@ def test_truecolor_skips_value_range_check(tmp_path):
 
     product = _make_product(tmp_path, "truecolor", array, "uint16", 0, "truecolor_ok")
 
-    result = validate_and_publish(product)
+    result = validate_and_publish(product, "30")
 
     assert result is True  # 값범위 검사는 ndvi/ndbi만(결정 사항 11)
 
@@ -157,7 +157,7 @@ def test_grid_mismatch_rejected(tmp_path):
         is_published=False,
     )
 
-    result = validate_and_publish(product)
+    result = validate_and_publish(product, "30")
 
     product.refresh_from_db()
     assert result is False

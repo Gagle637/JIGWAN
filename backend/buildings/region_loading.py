@@ -124,7 +124,8 @@ def load_regions(
     name_field: str | None = None,
     pad_to: int | None = None,
     source_date: date | None = None,
-    sido_prefix: str = "30",
+    *,
+    sido_prefix: str,
 ) -> dict:
     if level == "sido":
         return load_sido_from_sigungu_union(sido_prefix, source_date)

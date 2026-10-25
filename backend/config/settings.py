@@ -173,13 +173,16 @@ CELERY_TASK_QUEUES = (
 CELERY_TASK_ROUTES = {
     "core.tasks.healthcheck_ping": {"queue": "io"},
     "publicdata.tasks.trade_sync": {"queue": "io"},
+    "publicdata.tasks.trigger_trade_sync_for_enabled_regions": {"queue": "io"},
     "satellite.tasks.satellite_collect": {"queue": "io"},
+    "satellite.tasks.trigger_satellite_collect_for_enabled_regions": {"queue": "io"},
     "satellite.tasks.season_composite": {"queue": "cpu"},
     "satellite.tasks.change_analysis": {"queue": "cpu"},
     "satellite.tasks.region_stat_task": {"queue": "cpu"},
     "satellite.tasks.catalog_publish": {"queue": "cpu"},
     "satellite.tasks.trigger_season_chain_for_last_season": {"queue": "cpu"},
     "crime.tasks.safety_sync": {"queue": "io"},
+    "crime.tasks.trigger_safety_sync_for_enabled_regions": {"queue": "io"},
     "reports.tasks.generate_report": {"queue": "gpu"},
     # 정리(보관 기한) 잡 — 외부 호출 없는 로컬 DB·파일 정리라 cpu 큐(감사 결과 반영).
     "core.tasks.cleanup_index_runs_task": {"queue": "cpu"},

@@ -36,7 +36,7 @@ def zonal_green_ratio(green_mask_path: str, region_geom_4326) -> float:
     return green_count / valid_count
 
 
-def run_region_stat(year: int, season: str, sido_code: str = "30") -> dict:
+def run_region_stat(year: int, season: str, sido_code: str) -> dict:
     """green_mask COG가 이미 있어야 한다(season_composite 먼저 실행). region이 비어 있으면
     0건으로 끝난다(4단계 load_regions가 먼저 돌아 있어야 의미가 있음 — 알려진 한계).
     sido_code(다지역 지원 5단계)로 그 지역의 green_mask와 그 지역 안의 region만 쓴다 —

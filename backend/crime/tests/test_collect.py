@@ -31,7 +31,7 @@ def test_run_safety_sync_requires_feature_cap_configured(settings):
     settings.CRIME_FEATURE_CAP = None
 
     with pytest.raises(collect.FeatureCapNotConfigured):
-        collect.run_safety_sync("2023-07/2024-06")
+        collect.run_safety_sync("2023-07/2024-06", sido_code="30")
 
 
 def test_run_safety_sync_saves_features_for_a_single_small_grid(monkeypatch, settings):
@@ -46,7 +46,7 @@ def test_run_safety_sync_saves_features_for_a_single_small_grid(monkeypatch, set
         ],
     )
 
-    result = collect.run_safety_sync("2023-07/2024-06")
+    result = collect.run_safety_sync("2023-07/2024-06", sido_code="30")
 
     assert result["cells_done"] == 1
     assert result["cells_failed"] == 0
@@ -73,7 +73,7 @@ def test_run_safety_sync_splits_cell_at_feature_cap_and_processes_children(monke
 
     monkeypatch.setattr(collect, "fetch_feature_info", fake_fetch)
 
-    result = collect.run_safety_sync("2023-07/2024-06")
+    result = collect.run_safety_sync("2023-07/2024-06", sido_code="30")
 
     assert result["cells_done"] == 4  # 부모는 split, 자식 4개가 done
     assert (
@@ -128,7 +128,7 @@ def test_run_safety_sync_resumes_only_unfinished_cells_and_cleans_stale_segments
 
     monkeypatch.setattr(collect, "fetch_feature_info", fake_fetch)
 
-    result = collect.run_safety_sync("2023-07/2024-06")
+    result = collect.run_safety_sync("2023-07/2024-06", sido_code="30")
 
     assert len(calls) == 1  # 이미 done인 셀은 다시 호출하지 않는다(재개)
     assert result["fully_done"] is True
@@ -148,7 +148,7 @@ def test_run_safety_sync_dedupes_segment_seen_in_multiple_cells(monkeypatch, set
         lambda client, bbox, count: [_feature("SHARED", 7, [[0, 0], [1, 1]])],
     )
 
-    collect.run_safety_sync("2023-07/2024-06")
+    collect.run_safety_sync("2023-07/2024-06", sido_code="30")
 
     assert CrimeSegment.objects.filter(objt_id="SHARED").count() == 1
 
@@ -168,7 +168,7 @@ def test_run_safety_sync_marks_cell_failed_after_retries_but_continues_other_cel
 
     monkeypatch.setattr(collect, "fetch_feature_info", fake_fetch)
 
-    result = collect.run_safety_sync("2023-07/2024-06")
+    result = collect.run_safety_sync("2023-07/2024-06", sido_code="30")
 
     assert result["cells_failed"] == 1
     assert result["cells_done"] == 1

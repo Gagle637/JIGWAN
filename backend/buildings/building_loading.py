@@ -80,7 +80,7 @@ FROM {STAGING_TABLE}
 """
 
 
-def resolve_building_zip_path(explicit_path: str | None = None, sido_code: str = "30") -> Path:
+def resolve_building_zip_path(explicit_path: str | None = None, *, sido_code: str) -> Path:
     """explicit_path가 있으면 그대로, 없으면 data/raw/AL_D010_{sido_code}_*.zip 중
     파일명 끝 8자리 날짜(YYYYMMDD)가 가장 큰 파일을 고른다(다지역 지원 4단계)."""
     if explicit_path:
@@ -140,7 +140,7 @@ def assign_building_keys(records: list[dict]) -> None:
             record["building_key"] = f"{gis_bldg_id}_{ordinal}"
 
 
-def load_buildings(zip_path: Path, sido_code: str = "30") -> dict:
+def load_buildings(zip_path: Path, sido_code: str) -> dict:
     import pyogrio  # 지연 임포트: mapping.py 단위 테스트는 GDAL 없이도 돌게 하기 위함
 
     vsi_path = resolve_vsizip_shp_path(zip_path)

@@ -74,7 +74,7 @@ def test_listed_scene_is_not_treated_as_already_collected(monkeypatch):
         lambda items, grid=None, sido_code=None: ingested_ids.extend(i.id for i in items) or [],
     )
 
-    result = collect_module.collect_scenes(date(2026, 6, 1), date(2026, 8, 31))
+    result = collect_module.collect_scenes(date(2026, 6, 1), date(2026, 8, 31), sido_code="30")
 
     assert listed_item.id in ingested_ids
     assert done_item.id not in ingested_ids

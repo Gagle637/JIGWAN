@@ -93,7 +93,7 @@ def _load_index(product: RasterProduct) -> tuple[np.ndarray, object]:
         return int16_to_index(ds.read(1)), ds.transform
 
 
-def run_change_analysis(year: int, season: str, sido_code: str = "30") -> dict:
+def run_change_analysis(year: int, season: str, sido_code: str) -> dict:
     """같은 계절 1·2·3년 전 대비 변화 마스크·폴리곤을 만든다. 과거 비교 대상은 "있는 것만"
     (이미 게시된 것만) 쓴다(spec 5-4). 현재 계절은 이번 체인에서 막 만든 것(아직 미게시)을 쓴다.
     sido_code(다지역 지원 5단계)로 조회·저장을 그 지역 raster_product로 좁힌다 — 안 그러면

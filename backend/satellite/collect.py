@@ -11,7 +11,7 @@ from .stac_search import dedupe_latest_baseline, group_by_date, search_scenes
 logger = logging.getLogger(__name__)
 
 
-def collect_scenes(start: date, end: date, sido_code: str = "30") -> dict:
+def collect_scenes(start: date, end: date, sido_code: str) -> dict:
     """spec 5-1: '직전 실행 이후 등록된 장면만 다운로드·변환' — scene_id가 이미 DB에 있으면
     건너뛴다. sido_code(다지역 지원 2단계)로 검색 bbox·격자를 정한다."""
     bbox = get_bbox(sido_code)

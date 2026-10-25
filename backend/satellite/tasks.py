@@ -2,6 +2,7 @@ from datetime import date, timedelta
 
 from celery import chain, group, shared_task
 
+from core.areas import enabled_sido_codes
 from core.jobs import TrackedTask, tracked_job
 
 from .catalog import run_catalog_publish
@@ -17,53 +18,60 @@ LOOKBACK_DAYS = 30
 
 @shared_task(bind=True, base=TrackedTask, max_retries=3)
 @tracked_job(job_name="satellite_collect", lock_ttl_seconds=3600 * 6)
-def satellite_collect(self, region_code="30"):
-    """spec 5-1: 5일마다 02:00, io 큐. 직전 실행 이후 등록된 장면만 처리.
-
-    region_code 기본값 "30"(대전)은 다지역 지원 7단계에서 지역 반복으로 바꿀 때 없앤다
-    (docs/tasks/multi_area.md 7단계) — 지금은 이미 등록된 Beat 정기 실행이 인자 없이
-    호출하기 때문에 남겨 둔다."""
+def satellite_collect(self, sido_code):
+    """spec 5-1: 5일마다 02:00, io 큐. 직전 실행 이후 등록된 장면만 처리."""
     today = date.today()
-    return collect_scenes(today - timedelta(days=LOOKBACK_DAYS), today, sido_code=region_code)
+    return collect_scenes(today - timedelta(days=LOOKBACK_DAYS), today, sido_code=sido_code)
 
 
-def _region_code(year: int, season: str, sido_code: str = "30") -> str:
+@shared_task
+def trigger_satellite_collect_for_enabled_regions():
+    """Beat가 5일마다 02:00(spec 5-1) 호출하는 디스패처 — 활성 지역마다 satellite_collect를
+    하나씩 돌린다(다지역 지원 7단계). 지금까지 이 작업은 Beat에 등록된 적이 없었다."""
+    for sido_code in enabled_sido_codes():
+        satellite_collect.delay(sido_code)
+
+
+def _region_code(year: int, season: str, sido_code: str) -> str:
     """index_run/Redis 잠금 키에 sido_code·year·season을 실어 보낸다."""
     return f"{sido_code}:{year}:{season}"
 
 
 @shared_task(bind=True, base=TrackedTask, max_retries=3)
 @tracked_job(job_name="season_composite", lock_ttl_seconds=3600 * 4)
-def season_composite(self, region_code, year, season, sido_code="30"):
+def season_composite(self, region_code, year, season, sido_code):
     return run_season_composite(year, season, sido_code)
 
 
 @shared_task(bind=True, base=TrackedTask, max_retries=3)
 @tracked_job(job_name="change_analysis", lock_ttl_seconds=3600 * 2)
-def change_analysis(self, region_code, year, season, sido_code="30"):
+def change_analysis(self, region_code, year, season, sido_code):
     return run_change_analysis(year, season, sido_code)
 
 
 @shared_task(bind=True, base=TrackedTask, max_retries=3)
 @tracked_job(job_name="region_stat", lock_ttl_seconds=3600)
-def region_stat_task(self, region_code, year, season, sido_code="30"):
+def region_stat_task(self, region_code, year, season, sido_code):
     return run_region_stat(year, season, sido_code)
 
 
 @shared_task(bind=True, base=TrackedTask, max_retries=3)
 @tracked_job(job_name="catalog_publish", lock_ttl_seconds=3600)
-def catalog_publish(self, region_code, year, season, sido_code="30"):
+def catalog_publish(self, region_code, year, season, sido_code):
     return run_catalog_publish(year, season, sido_code)
 
 
 @shared_task(bind=True, base=TrackedTask, max_retries=3)
 @tracked_job(job_name="cleanup_scene_cogs", lock_ttl_seconds=3600)
-def cleanup_scene_cogs_task(self, region_code="30"):
-    """spec 5-4: 장면별 COG는 계절 합성에 쓰인 지 90일 지나면 삭제. 주 1회(Beat, cpu 큐)."""
+def cleanup_scene_cogs_task(self, region_code="global"):
+    """spec 5-4: 장면별 COG는 계절 합성에 쓰인 지 90일 지나면 삭제. 주 1회(Beat, cpu 큐).
+
+    지역별 작업이 아니다(모든 지역의 오래된 장면 COG를 한 번에 정리) — region_code는 실제
+    지역이 아니라 이 전역 잡의 잠금/index_run 식별자일 뿐이다."""
     return cleanup_old_scene_cogs()
 
 
-def build_season_chain(year: int, season: str, sido_code: str = "30"):
+def build_season_chain(year: int, season: str, sido_code: str):
     """season_composite → group(change_analysis, region_stat) → catalog_publish(spec 5-2).
 
     전부 immutable(.si()) 서명이라 앞 단계 반환값이나 group 결과 리스트가 다음 태스크로
@@ -98,6 +106,8 @@ def _season_just_ended(today: date) -> tuple[int, str]:
 @shared_task
 def trigger_season_chain_for_last_season():
     """Beat가 분기 4번(spec 5-1) 호출하는 얇은 디스패처 — 실제 작업은 build_season_chain의
-    각 태스크(이미 tracked_job으로 감싸져 있음)가 한다."""
+    각 태스크(이미 tracked_job으로 감싸져 있음)가 한다. 활성 지역마다 하나씩 체인을
+    돌린다(다지역 지원 7단계)."""
     year, season = _season_just_ended(date.today())
-    build_season_chain(year, season).apply_async()
+    for sido_code in enabled_sido_codes():
+        build_season_chain(year, season, sido_code).apply_async()

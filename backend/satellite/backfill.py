@@ -60,7 +60,7 @@ def target_seasons(today: date | None = None, count: int = TOTAL_SEASONS) -> lis
     return list(reversed(seasons))
 
 
-def dry_run_list_scenes(seasons: list[tuple[int, str]], sido_code: str = "30") -> dict:
+def dry_run_list_scenes(seasons: list[tuple[int, str]], sido_code: str) -> dict:
     """spec 4장 2단계: 대상 계절 전체를 STAC로 검색해 status=listed로 기록하고, 신규 장면
     수·예상 다운로드 용량을 집계한다(CDSE 한도 안에서 일정을 잡는 용도)."""
     bbox = get_bbox(sido_code)
@@ -118,7 +118,7 @@ def _season_already_published(year: int, season: str, sido_code: str) -> bool:
     return _REQUIRED_PRODUCT_TYPES <= published_types
 
 
-def run_backfill(seasons: list[tuple[int, str]], sido_code: str = "30") -> list[dict]:
+def run_backfill(seasons: list[tuple[int, str]], sido_code: str) -> list[dict]:
     """spec 4장 3·4·5단계: 오래된 계절부터 수집 → 합성 → 변화·기준선 → 게시 순으로 한
     계절을 끝내고 다음 계절로 넘어간다 — 한 계절을 끝내기 전에 다음 계절을 내려받지 않으므로
     디스크 최대 사용량이 한 계절분으로 제한된다.

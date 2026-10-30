@@ -6,11 +6,15 @@ buildings를 함수 안에서 지연 임포트하는 이유: core는 모든 앱�
 import math
 from pathlib import Path
 
+from django.conf import settings
+
 from .models import ServiceArea
 
 SNAP_M = 60
 RESOLUTION_M = 10
 BUFFER_M = 500
+
+DATA_RAW_DIR = Path(settings.BASE_DIR).parent / "data" / "raw"
 
 
 def _get_area(sido_code: str) -> ServiceArea:
@@ -143,3 +147,39 @@ def discover_available_areas(path: Path) -> list[dict]:
         entry["sigungu_count"] += 1
 
     return sorted(groups.values(), key=lambda g: g["sido_code"])
+
+
+def resolve_al_d001_zip_path(explicit_path: str | Path | None = None) -> Path:
+    """AL_D001_00_*.zip 경로를 고른다(생략하면 data/raw/에서 파일명 날짜가 가장 최신인
+    것) — `areas add`·`areas available` 명령과 10단계 대화형 메뉴가 같이 쓴다."""
+    if explicit_path:
+        path = Path(explicit_path)
+        if not path.exists():
+            raise FileNotFoundError(f"파일을 찾을 수 없습니다: {path}")
+        return path
+
+    candidates = sorted(DATA_RAW_DIR.glob("AL_D001_00_*.zip"))
+    if not candidates:
+        raise FileNotFoundError(
+            f"{DATA_RAW_DIR}에서 AL_D001_00_*.zip 파일을 찾지 못했습니다."
+        )
+    return candidates[-1]
+
+
+def list_available_areas(explicit_path: str | Path | None = None) -> list[dict]:
+    """discover_available_areas 결과에 이미 등록된 지역의 상태("사용 중"/"비활성"/"미등록")를
+    더한다(다지역 지원 8단계) — `areas available` 명령과 10단계 대화형 메뉴가 같이 쓴다."""
+    path = resolve_al_d001_zip_path(explicit_path)
+    existing = {area.sido_code: area for area in ServiceArea.objects.all()}
+
+    results = []
+    for entry in discover_available_areas(path):
+        area = existing.get(entry["sido_code"])
+        if area is None:
+            status = "미등록"
+        elif area.enabled:
+            status = "사용 중"
+        else:
+            status = "비활성"
+        results.append({**entry, "status": status})
+    return results

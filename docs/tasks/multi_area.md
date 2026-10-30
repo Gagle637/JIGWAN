@@ -190,14 +190,20 @@ index_run 키로 바꿔 뒀다 — 이 단계에서 남은 건 그 "30" 기본�
 **완료 기준**: 비활성화(`enabled=False`) 지역은 정기 배치에서 건너뛰는 테스트. 지역 코드 없이
 내부 함수를 부르면 에러가 나는 테스트. 전체 pytest 통과.
 
-### 8. `areas` 관리 명령 — list/status/add/disable
+### 8. `areas` 관리 명령 — list/status/add/disable — 완료(2026-10-30)
 
-**파일**: `backend/core/management/commands/areas.py`(신설). 하위 명령: `list`(등록된 지역 +
-활성화 상태), `status`(지역별 단계 진행 상황), `add <코드>`(`discover_available_areas` 목록에서
-고른 코드로 `service_area` 행 생성), `disable <코드>`.
+**파일**: `backend/core/management/commands/areas.py`(신설, argparse 서브파서). 하위 명령:
+`list`(등록된 지역 + 활성화·grid 여부), `status [코드]`(행정경계·건물·위성·실거래·범죄 개수
+요약, 코드 생략 시 전체), `available [--path]`(`discover_available_areas` 결과에 이미 등록된
+지역의 상태를 더함), `add <코드> [--path]`(`enabled=False`로 등록, 실제 적재는 안 함),
+`enable <코드>`(region(level=sido)·grid가 있어야 함, 없으면
+`"먼저 경계를 적재하세요(areas sync 또는 load_regions --sido 코드)"`로 실패), `disable <코드>`.
+
+`core/areas.py`에 `resolve_al_d001_zip_path`·`list_available_areas`를 추가해 `available`·`add`가
+공유하고, 10단계 대화형 메뉴도 그대로 재사용한다.
 
 **완료 기준**: `manage.py areas list`가 대전을 보여줌, `manage.py areas add 36`이 세종을
-비활성 상태로 추가(실제 수집은 안 함). 전체 pytest 통과.
+비활성 상태로 추가(실제 수집은 안 함). 전체 pytest 통과(489개).
 
 ### 9. `areas sync` — 지역별 전체 백필 파이프라인
 
@@ -207,6 +213,12 @@ index_run 키로 바꿔 뒀다 — 이 단계에서 남은 건 그 "30" 기본�
 건너뛴다(각 단계를 `tracked_run`으로 기록해 판단). 원본 파일(`AL_D001_00_*`, `AL_D010_{sido}_*`)이
 없으면 그 단계에서 멈추고 어디서 받는지(브이월드 "GIS건물통합정보" 등)·파일명 형식·넣을 위치를
 안내한다.
+
+**메모(2026-10-30 추가)**: sync가 (1)·(2)단계(경계·건물 적재)를 끝내면 그 지역을 자동으로
+`enabled=True`로 바꾼다 — 8단계의 `areas enable`과 같은 조건(region level=sido + grid)을
+sync 흐름 안에서 자연스럽게 만족하게 되므로, 사용자가 `sync` 뒤에 `enable`을 따로 안 해도 된다.
+(3)~(5)단계(실거래·위성·범죄)가 실패/건너뜀이어도 활성화 자체는 유지한다 — 경계·건물만 있으면
+조회 가능한 수준의 서비스는 이미 되기 때문이다.
 
 **완료 기준**: `--dry-run`이 실제 수집 없이 "할 일/이미 끝난 일" 목록만 출력. 중간에 끊겼다가
 다시 실행하면 끝난 단계를 건너뛰는 테스트.

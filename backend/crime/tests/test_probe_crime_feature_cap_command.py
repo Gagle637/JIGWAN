@@ -3,7 +3,11 @@ from datetime import date
 import pytest
 
 from buildings.models import Building
-from crime.management.commands.probe_crime_feature_cap import _building_density_centroid
+from crime.management.commands.probe_crime_feature_cap import (
+    DEFAULT_LAT,
+    DEFAULT_LON,
+    _building_density_centroid,
+)
 
 pytestmark = pytest.mark.django_db
 
@@ -51,3 +55,20 @@ def test_building_density_centroid_ignores_inactive_buildings():
 
 def test_building_density_centroid_returns_none_when_no_buildings():
     assert _building_density_centroid("99") is None
+
+
+def test_building_density_centroid_for_daejeon_is_near_the_historical_default_point():
+    """대전(30)도 더는 따로 분기하지 않고 다른 지역과 같은 규칙(건물 밀집 시군구의 건물
+    중심점)을 쓴다 — 원도심 예시 좌표(DEFAULT_LON/LAT) 근처에 건물을 몰아두면 그 근처
+    결과가 나와야 한다."""
+    _building("D1", "3014010100", DEFAULT_LON - 0.001, DEFAULT_LAT - 0.001)
+    _building("D2", "3014010100", DEFAULT_LON + 0.001, DEFAULT_LAT + 0.001)
+    # 다른 구(덜 밀집) — 더 밀집된 중구(30140)가 선택돼야 한다.
+    _building("D3", "3020010100", 127.3, 36.2)
+
+    centroid = _building_density_centroid("30")
+
+    assert centroid is not None
+    lon, lat = centroid
+    assert lon == pytest.approx(DEFAULT_LON, abs=0.01)
+    assert lat == pytest.approx(DEFAULT_LAT, abs=0.01)

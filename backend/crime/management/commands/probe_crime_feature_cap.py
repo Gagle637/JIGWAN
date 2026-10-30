@@ -12,9 +12,9 @@ from crime.safemap_client import REQUESTED_FEATURE_COUNT, fetch_feature_info
 
 REQUEST_DELAY_RANGE_SECONDS = (1.0, 2.0)
 
-# 대전 중구 원도심(은행동·중앙로 일대) — 도로·주의구간이 촘촘해 상한에 걸릴 가능성이 큰 지점의
-# 예시 좌표. 다른 지점을 보고 싶으면 --lon/--lat로 바꿀 수 있다. 대전 외 지역은 --lon/--lat를
-# 안 주면 건물이 가장 많은 시군구의 건물 중심점(실제로 밀집된 곳)을 쓴다(다지역 지원 7단계).
+# 대전 중구 원도심(은행동·중앙로 일대) — 이 명령이 대전에만 쓰이던 시절의 예시 좌표.
+# 이제는 모든 지역이 건물 밀집 시군구의 건물 중심점을 쓰므로(다지역 지원 7단계) 코드에서
+# 더 이상 분기하지 않지만, 대전의 실제 결과가 이 근처인지 비교하는 테스트용으로 남겨 둔다.
 DEFAULT_LON = 127.4258
 DEFAULT_LAT = 36.3262
 
@@ -75,24 +75,20 @@ class Command(BaseCommand):
 
     def _probe_one(self, sido_code, lon, lat):
         if lon is None or lat is None:
-            if sido_code == "30":
-                lon = lon if lon is not None else DEFAULT_LON
-                lat = lat if lat is not None else DEFAULT_LAT
+            centroid = _building_density_centroid(sido_code)
+            if centroid is not None:
+                lon = lon if lon is not None else centroid[0]
+                lat = lat if lat is not None else centroid[1]
             else:
-                centroid = _building_density_centroid(sido_code)
-                if centroid is not None:
-                    lon = lon if lon is not None else centroid[0]
-                    lat = lat if lat is not None else centroid[1]
-                else:
-                    self.stdout.write(
-                        self.style.WARNING(
-                            "  건물이 아직 없어 지역 bbox 중심을 씁니다"
-                            "(load_buildings를 먼저 실행하면 더 밀집된 지점을 씁니다)."
-                        )
+                self.stdout.write(
+                    self.style.WARNING(
+                        "  건물이 아직 없어 지역 bbox 중심을 씁니다"
+                        "(load_buildings를 먼저 실행하면 더 밀집된 지점을 씁니다)."
                     )
-                    minx, miny, maxx, maxy = get_bbox(sido_code)
-                    lon = lon if lon is not None else (minx + maxx) / 2
-                    lat = lat if lat is not None else (miny + maxy) / 2
+                )
+                minx, miny, maxx, maxy = get_bbox(sido_code)
+                lon = lon if lon is not None else (minx + maxx) / 2
+                lat = lat if lat is not None else (miny + maxy) / 2
 
         (cx,), (cy,) = transform("EPSG:4326", "EPSG:3857", [lon], [lat])
         half = grid.CELL_SIZE_M / 2

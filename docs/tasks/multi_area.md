@@ -205,30 +205,49 @@ index_run 키로 바꿔 뒀다 — 이 단계에서 남은 건 그 "30" 기본�
 **완료 기준**: `manage.py areas list`가 대전을 보여줌, `manage.py areas add 36`이 세종을
 비활성 상태로 추가(실제 수집은 안 함). 전체 pytest 통과(489개).
 
-### 9. `areas sync` — 지역별 전체 백필 파이프라인
+### 9. `areas sync` — 지역별 전체 백필 파이프라인 — 완료(2026-10-30)
 
-**파일**: `backend/core/management/commands/areas.py`(`sync [--area 코드] [--dry-run]` 추가).
+**파일**: `backend/core/management/commands/areas.py`(`sync --area 코드 [--dry-run]` 추가).
 순서: (1) 경계 적재(전국 AL_D001에서 해당 시도만 sigungu→bjd→sido union) (2) 건물 적재
-(3) 실거래 24개월 백필 (4) 위성 13계절 백필 (5) 범죄 상한 측정·수집. 이미 끝난 단계는
-건너뛴다(각 단계를 `tracked_run`으로 기록해 판단). 원본 파일(`AL_D001_00_*`, `AL_D010_{sido}_*`)이
-없으면 그 단계에서 멈추고 어디서 받는지(브이월드 "GIS건물통합정보" 등)·파일명 형식·넣을 위치를
-안내한다.
+(3) 실거래 24개월 백필 (4) 위성 13계절 백필 (5) 범죄 상한 측정·수집.
 
-**메모(2026-10-30 추가)**: sync가 (1)·(2)단계(경계·건물 적재)를 끝내면 그 지역을 자동으로
-`enabled=True`로 바꾼다 — 8단계의 `areas enable`과 같은 조건(region level=sido + grid)을
-sync 흐름 안에서 자연스럽게 만족하게 되므로, 사용자가 `sync` 뒤에 `enable`을 따로 안 해도 된다.
-(3)~(5)단계(실거래·위성·범죄)가 실패/건너뜀이어도 활성화 자체는 유지한다 — 경계·건물만 있으면
-조회 가능한 수준의 서비스는 이미 되기 때문이다.
+**완료 판단은 전부 실제 데이터 기준**(2026-10-30 확정, IndexRun은 실행 기록용일 뿐): (1) 경계=
+`region(level=sido)` + `service_area.grid` 존재, (2) 건물=그 지역 활성 건물 존재, (3) 실거래=
+최근 24개월 중 `Trade`가 없는 달만 다시 수집(계절처럼 달 단위로 이어하기), (4) 위성=
+`target_seasons()` 중 4종이 전부 게시 안 된 계절만 처리(계절마다 진행 상황 출력), (5) 범죄=
+`crime_fetch_progress`가 그 지역 전부 done/split이고 그 경계와 교차하는 `CRIME_DATA_PERIOD`
+구간이 있음. "건너뜀"(원본 파일 없음·`CRIME_FEATURE_CAP`/`CRIME_DATA_PERIOD` 미설정·잠금 충돌)은
+`SUCCEEDED`가 아니라 `SKIPPED`로 기록하고, 다음 실행에서 데이터 기준으로 다시 확인한다(파일을
+넣거나 설정을 채우면 자동으로 재시도됨 — 테스트로 확인).
 
-**완료 기준**: `--dry-run`이 실제 수집 없이 "할 일/이미 끝난 일" 목록만 출력. 중간에 끊겼다가
-다시 실행하면 끝난 단계를 건너뛰는 테스트.
+원본 파일이 없으면: 경계(1단계)는 전체 sync를 중단(이후 단계가 경계에 의존)하고 어디서 받는지
+(국가공간정보포털/브이월드 "법정구역정보")·파일명(`AL_D001_00_YYYYMMDD.zip`)·위치(`data/raw/`)를
+안내. 건물(2단계)은 그 단계와 **실거래(3단계)만** 건너뛰고 위성·범죄는 계속 진행 — 거래 위치가
+건물 중심점이라 건물 없이 돌리면 매칭이 전부 비어서 쌓이기 때문. 안내 문구에 "건물 파일을 넣고
+다시 실행하면 실거래부터 이어서 진행됩니다"를 포함.
+
+**자동 활성화**: sync가 (1)·(2)단계(경계·건물)를 끝내면(이번 실행이든 이전이든, 데이터 기준으로
+판단) 그 지역을 자동으로 `enabled=True`로 바꾼다. (3)~(5)단계 실패/건너뜀과 무관하게 유지한다.
+
+**완료 기준**: `--dry-run`이 실제 수집 없이 "할 일/이미 끝난 일" 목록만 출력(전체 pytest 496개
+통과). 위성 13계절 중 일부만 게시된 상태에서 다시 실행하면 빠진 계절만 처리, 건너뛴 단계(설정
+없음 등)가 다음 실행에서 다시 시도되는지 테스트로 확인.
 
 ### 10. 대화형 메뉴 + 셸 스크립트 + 문서
 
 **파일**: `backend/core/management/commands/areas.py`(인자 없이 실행하면 대화형 메뉴 — 현재
-지역+단계별 ✓/✗, 추가 가능 지역 번호 목록, 번호 선택 → `add` → `sync` 순서로 안내),
-`scripts/areas.sh`(신설, `docker compose exec [-it] api python manage.py areas "$@"` 한 줄
-래퍼 — 인자 없으면 `-it`), `README.md`("지역 추가 방법" 섹션 추가).
+지역+단계별 ✓/✗, 추가 가능 지역 번호 목록, 번호 선택 → `add` → `sync` 순서로 안내; 지역
+목록·추가 가능 목록은 `core.areas.list_available_areas`를 그대로 재사용), `scripts/areas.sh`(신설,
+`docker compose exec [-it] api python manage.py areas "$@"` 한 줄 래퍼 — 인자 없으면 `-it`),
+`README.md`("지역 추가 방법" 섹션 추가).
+
+**메모(2026-10-30 추가, README에 반영할 내용)**: `areas sync`의 위성 단계(13계절 백필)는 오래
+걸릴 수 있다(실측: CDSE 다운로드·합성 포함) — SSH 연결이 끊겨도 계속 돌게 `nohup`으로 백그라운드
+실행하는 방법을 README에 적는다:
+```bash
+nohup ./scripts/areas.sh sync --area 36 > sync.log 2>&1 &
+tail -f sync.log   # 진행 상황(계절마다 한 줄씩) 확인
+```
 
 **완료 기준**: `./scripts/areas.sh list`, `./scripts/areas.sh sync --area 30 --dry-run` 실행
-예시를 README에 반영. 전체 pytest 통과.
+예시와 위 `nohup` 사용법을 README에 반영. 전체 pytest 통과.

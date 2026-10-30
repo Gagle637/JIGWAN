@@ -2,11 +2,15 @@ import zipfile
 from datetime import date
 
 import pytest
+from django.contrib.gis.geos import Polygon as GEOSPolygon
 from django.core.management import call_command
 from django.core.management.base import CommandError
 
+import core.management.commands.areas as areas_cmd
 from buildings.models import Building, Region
-from core.models import ServiceArea
+from core.models import IndexRun, ServiceArea
+from satellite.composite import ALGO_VERSION
+from satellite.models import RasterProduct
 
 pytestmark = pytest.mark.django_db
 
@@ -16,6 +20,27 @@ def _square_wkt(minx, miny, size=0.01):
     return (
         f"MULTIPOLYGON((({minx} {miny}, {maxx} {miny}, "
         f"{maxx} {maxy}, {minx} {maxy}, {minx} {miny})))"
+    )
+
+
+def _sejong_with_boundary(enabled=False):
+    ServiceArea.objects.create(
+        sido_code="36", name="세종특별자치시", enabled=enabled, grid={"crs": "EPSG:32652"}
+    )
+    Region.objects.create(
+        region_code="36", level="sido", name="세종특별자치시", geom=_square_wkt(127.0, 36.0)
+    )
+
+
+def _sejong_building():
+    Building.objects.create(
+        building_key="S1",
+        gis_bldg_id="S1",
+        pnu="3611010100101530003",
+        bjd_code="3611010100",
+        source_date=date(2026, 1, 1),
+        geom="POLYGON((0 0, 1 0, 1 1, 0 1, 0 0))",
+        is_active=True,
     )
 
 
@@ -181,3 +206,162 @@ def test_areas_status_counts_building_and_region(capsys):
 def test_areas_status_unknown_code_raises():
     with pytest.raises(CommandError, match="등록된 지역"):
         call_command("areas", "status", "99")
+
+
+# ---- sync ----
+
+
+def test_areas_sync_requires_registered_area():
+    with pytest.raises(CommandError, match="등록된 지역"):
+        call_command("areas", "sync", "--area", "99")
+
+
+def test_areas_sync_dry_run_calls_nothing(monkeypatch, capsys):
+    ServiceArea.objects.create(sido_code="36", name="세종특별자치시", enabled=False)
+    monkeypatch.setattr(areas_cmd, "target_seasons", lambda: [(2026, "summer")])
+
+    for name in (
+        "load_regions", "load_buildings", "sync_trades_for_months", "run_backfill", "run_crime_sync",
+    ):
+        def _fail(*a, _name=name, **k):
+            pytest.fail(f"{_name}이 dry-run에서 호출되면 안 됩니다")
+
+        monkeypatch.setattr(areas_cmd, name, _fail)
+
+    call_command("areas", "sync", "--area", "36", "--dry-run")
+
+    out = capsys.readouterr().out
+    assert "할 일" in out
+    assert ServiceArea.objects.get(sido_code="36").enabled is False
+
+
+def test_areas_sync_stops_when_boundary_file_missing(monkeypatch, capsys):
+    ServiceArea.objects.create(sido_code="36", name="세종특별자치시", enabled=False)
+    monkeypatch.setattr(
+        areas_cmd,
+        "resolve_al_d001_zip_path",
+        lambda path: (_ for _ in ()).throw(FileNotFoundError("AL_D001_00 없음")),
+    )
+    calls = []
+    for name in ("load_buildings", "sync_trades_for_months", "run_backfill", "run_crime_sync"):
+        monkeypatch.setattr(areas_cmd, name, lambda *a, _n=name, **k: calls.append(_n))
+
+    call_command("areas", "sync", "--area", "36")
+
+    assert calls == []  # 경계가 안 끝나면 뒤 단계는 전부 건너뜀
+    out = capsys.readouterr().out
+    assert "경계 중단" in out
+    run = IndexRun.objects.get(job=areas_cmd.STAGE_BOUNDARY, region_code="36")
+    assert run.status == IndexRun.Status.SKIPPED
+
+
+def test_areas_sync_building_file_missing_skips_trades_but_continues_satellite_and_crime(
+    monkeypatch, settings, capsys
+):
+    _sejong_with_boundary()
+    monkeypatch.setattr(
+        areas_cmd,
+        "resolve_building_zip_path",
+        lambda path, sido_code: (_ for _ in ()).throw(FileNotFoundError("AL_D010 없음")),
+    )
+    monkeypatch.setattr(areas_cmd, "target_seasons", lambda: [(2026, "summer")])
+    satellite_calls = []
+    monkeypatch.setattr(
+        areas_cmd, "run_backfill", lambda seasons, sido_code: satellite_calls.append(seasons) or []
+    )
+    crime_calls = []
+    monkeypatch.setattr(
+        areas_cmd, "run_crime_sync", lambda period, sido_code: crime_calls.append(sido_code)
+    )
+    settings.CRIME_FEATURE_CAP = 100
+    settings.CRIME_DATA_PERIOD = "2023-07/2024-06"
+
+    call_command("areas", "sync", "--area", "36")
+
+    assert satellite_calls == [[(2026, "summer")]]
+    assert crime_calls == ["36"]
+    out = capsys.readouterr().out
+    assert "실거래 건너뜀" in out
+    assert "건물 파일을 넣고 다시 실행하면 실거래부터" in out
+    trades_run = IndexRun.objects.get(job=areas_cmd.STAGE_TRADES, region_code="36")
+    assert trades_run.status == IndexRun.Status.SKIPPED
+
+
+def test_areas_sync_satellite_only_processes_missing_seasons(monkeypatch, settings):
+    """위성 13계절 중 일부만 게시된 상태에서 다시 실행하면 빠진 계절만 처리한다."""
+    _sejong_with_boundary(enabled=True)
+    _sejong_building()
+    monkeypatch.setattr(areas_cmd, "sync_trades_for_months", lambda *a, **k: None)
+    monkeypatch.setattr(
+        areas_cmd, "target_seasons", lambda: [(2026, "summer"), (2026, "fall")]
+    )
+    settings.CRIME_FEATURE_CAP = None
+
+    bbox = GEOSPolygon.from_bbox((127.0, 36.0, 127.1, 36.1))
+    for product_type in ("ndvi", "ndbi", "green_mask", "truecolor"):
+        RasterProduct.objects.create(
+            region_code="36",
+            product_type=product_type,
+            year=2026,
+            season="summer",
+            period_start="2026-06-01",
+            period_end="2026-08-31",
+            bbox=bbox,
+            cog_path=f"/tmp/{product_type}.tif",
+            algo_version=ALGO_VERSION,
+            scene_ids=[],
+            is_published=True,
+        )
+
+    satellite_calls = []
+    monkeypatch.setattr(
+        areas_cmd, "run_backfill", lambda seasons, sido_code: satellite_calls.append(seasons) or []
+    )
+
+    call_command("areas", "sync", "--area", "36")
+
+    assert satellite_calls == [[(2026, "fall")]]  # summer는 이미 게시됐으니 fall만 처리
+
+
+def test_areas_sync_skipped_crime_stage_is_retried_once_config_is_fixed(monkeypatch, settings):
+    """건너뛴 단계(설정 없음)가 다음 실행에서 다시 시도되는지 확인한다."""
+    _sejong_with_boundary(enabled=True)
+    _sejong_building()
+    monkeypatch.setattr(areas_cmd, "target_seasons", lambda: [])
+    monkeypatch.setattr(areas_cmd, "sync_trades_for_months", lambda *a, **k: None)
+    settings.CRIME_FEATURE_CAP = None
+    settings.CRIME_DATA_PERIOD = None
+
+    call_command("areas", "sync", "--area", "36")
+
+    run = IndexRun.objects.filter(job=areas_cmd.STAGE_CRIME, region_code="36").latest("id")
+    assert run.status == IndexRun.Status.SKIPPED
+
+    settings.CRIME_FEATURE_CAP = 100
+    settings.CRIME_DATA_PERIOD = "2023-07/2024-06"
+    crime_calls = []
+    monkeypatch.setattr(
+        areas_cmd, "run_crime_sync", lambda period, sido_code: crime_calls.append((period, sido_code))
+    )
+
+    call_command("areas", "sync", "--area", "36")
+
+    assert crime_calls == [("2023-07/2024-06", "36")]
+
+
+def test_areas_sync_auto_enables_once_boundary_and_buildings_done(monkeypatch, settings):
+    area = ServiceArea.objects.create(
+        sido_code="36", name="세종특별자치시", enabled=False, grid={"crs": "EPSG:32652"}
+    )
+    Region.objects.create(
+        region_code="36", level="sido", name="세종특별자치시", geom=_square_wkt(127.0, 36.0)
+    )
+    _sejong_building()
+    monkeypatch.setattr(areas_cmd, "target_seasons", lambda: [])
+    monkeypatch.setattr(areas_cmd, "sync_trades_for_months", lambda *a, **k: None)
+    settings.CRIME_FEATURE_CAP = None
+
+    call_command("areas", "sync", "--area", "36")
+
+    area.refresh_from_db()
+    assert area.enabled is True

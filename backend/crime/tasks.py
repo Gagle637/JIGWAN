@@ -1,7 +1,7 @@
 from celery import shared_task
 from django.conf import settings
 
-from core.areas import enabled_sido_codes
+from core.areas import enabled_and_ready_sido_codes
 from core.jobs import TrackedTask, tracked_job
 from layers.wms_proxy import clear_tile_cache
 
@@ -32,5 +32,5 @@ def safety_sync(self, sido_code, data_period=None):
 def trigger_safety_sync_for_enabled_regions():
     """Beat가 매년 1월 첫째 주(spec 5-1) 호출하는 디스패처 — 활성 지역마다 safety_sync를
     하나씩 돌린다(다지역 지원 7단계)."""
-    for sido_code in enabled_sido_codes():
+    for sido_code in enabled_and_ready_sido_codes():
         safety_sync.delay(sido_code)

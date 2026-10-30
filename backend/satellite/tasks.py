@@ -2,7 +2,7 @@ from datetime import date, timedelta
 
 from celery import chain, group, shared_task
 
-from core.areas import enabled_sido_codes
+from core.areas import enabled_and_ready_sido_codes
 from core.jobs import TrackedTask, tracked_job
 
 from .catalog import run_catalog_publish
@@ -28,7 +28,7 @@ def satellite_collect(self, sido_code):
 def trigger_satellite_collect_for_enabled_regions():
     """Beat가 5일마다 02:00(spec 5-1) 호출하는 디스패처 — 활성 지역마다 satellite_collect를
     하나씩 돌린다(다지역 지원 7단계). 지금까지 이 작업은 Beat에 등록된 적이 없었다."""
-    for sido_code in enabled_sido_codes():
+    for sido_code in enabled_and_ready_sido_codes():
         satellite_collect.delay(sido_code)
 
 
@@ -109,5 +109,5 @@ def trigger_season_chain_for_last_season():
     각 태스크(이미 tracked_job으로 감싸져 있음)가 한다. 활성 지역마다 하나씩 체인을
     돌린다(다지역 지원 7단계)."""
     year, season = _season_just_ended(date.today())
-    for sido_code in enabled_sido_codes():
+    for sido_code in enabled_and_ready_sido_codes():
         build_season_chain(year, season, sido_code).apply_async()

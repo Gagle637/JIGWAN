@@ -303,130 +303,223 @@ class Command(BaseCommand):
             self._sync_dry_run_report(sido_code)
             return
 
-        # 1/5 경계
-        if self._boundary_done(sido_code):
-            self.stdout.write("[1/5] 경계: 이미 끝남, 건너뜀")
-        else:
-            try:
-                al_d001_path = resolve_al_d001_zip_path(None)
-            except FileNotFoundError as exc:
-                reason = str(exc)
-                self._record_skipped(STAGE_BOUNDARY, sido_code, reason)
-                self.stdout.write(
-                    self.style.ERROR(
-                        f"[1/5] 경계 중단: {reason}\n  {self._boundary_file_guidance()}"
-                    )
-                )
-                return
-            try:
-                with tracked_run(STAGE_BOUNDARY, sido_code, lock_ttl_seconds=1800):
-                    load_regions(al_d001_path, level="sigungu", sido_prefix=sido_code)
-                    load_regions(al_d001_path, level="bjd", sido_prefix=sido_code)
-                    load_regions(None, level="sido", sido_prefix=sido_code)
-                self.stdout.write(self.style.SUCCESS("[1/5] 경계 완료"))
-            except JobSkipped:
-                self.stdout.write(
-                    self.style.WARNING("[1/5] 경계: 다른 실행 중이라 건너뜀 — 동기화를 중단합니다.")
-                )
-                return
+        results = {}
+        results["경계"] = self._stage1_boundary(sido_code)
 
-        # 2/5 건물
-        if self._building_done(sido_code):
-            self.stdout.write("[2/5] 건물: 이미 끝남, 건너뜀")
-        else:
-            try:
-                al_d010_path = resolve_building_zip_path(None, sido_code=sido_code)
-            except FileNotFoundError as exc:
-                reason = str(exc)
-                self._record_skipped(STAGE_BUILDINGS, sido_code, reason)
-                self.stdout.write(
-                    self.style.WARNING(
-                        f"[2/5] 건물 건너뜀: {reason}\n  {self._building_file_guidance(sido_code)}"
-                    )
-                )
-            else:
-                try:
-                    with tracked_run(STAGE_BUILDINGS, sido_code, lock_ttl_seconds=3600):
-                        load_buildings(al_d010_path, sido_code=sido_code)
-                    self.stdout.write(self.style.SUCCESS("[2/5] 건물 완료"))
-                except JobSkipped:
-                    self.stdout.write(self.style.WARNING("[2/5] 건물: 다른 실행 중이라 건너뜀"))
+        if not self._boundary_done(sido_code):
+            # 경계가 안 끝났으면(지금 막혔든 전부터 안 됐든) 뒤 단계는 손대지 않는다 —
+            # 다들 경계(시군구 코드·bbox·grid)에 의존한다.
+            for label in ("건물", "실거래", "위성", "범죄"):
+                results[label] = "not attempted: 경계가 끝나지 않음"
+            self._finish_sync(area, sido_code, results)
+            return
+
+        results["건물"] = self._stage2_buildings(sido_code)
 
         # 경계+건물이 (이번 실행이든 이전이든) 끝나 있으면 자동 활성화
-        if self._boundary_done(sido_code) and self._building_done(sido_code):
-            if not area.enabled:
-                area.enabled = True
-                area.save(update_fields=["enabled"])
-                self.stdout.write(
-                    self.style.SUCCESS(f"'{sido_code}' 자동 활성화됨(경계·건물 적재 완료)")
-                )
+        if self._building_done(sido_code) and not area.enabled:
+            area.enabled = True
+            area.save(update_fields=["enabled"])
+            self.stdout.write(
+                self.style.SUCCESS(f"'{sido_code}' 자동 활성화됨(경계·건물 적재 완료)")
+            )
 
-        # 3/5 실거래 — 건물이 안 끝났으면 건너뜀(거래 위치가 건물 중심점이라 비어서 쌓임)
+        results["실거래"] = self._stage3_trades(sido_code)
+        results["위성"] = self._stage4_satellite(sido_code)
+        results["범죄"] = self._stage5_crime(sido_code)
+
+        self._finish_sync(area, sido_code, results)
+
+    def _finish_sync(self, area, sido_code, results):
+        """단계별 결과를 요약해 보여준다. 하나라도 failed면 CommandError로 종료 코드 1 —
+        그 외(ok/skipped/not attempted)는 정상 종료(스펙: "건너뜀"은 실패가 아니다)."""
+        self.stdout.write("")
+        self.stdout.write(self.style.SUCCESS(f"=== {sido_code} {area.name} 결과 요약 ==="))
+        any_failed = False
+        for label, outcome in results.items():
+            self.stdout.write(f"  {label}: {outcome}")
+            if outcome.startswith("failed"):
+                any_failed = True
+        if any_failed:
+            raise CommandError(
+                f"'{sido_code}' 동기화 중 일부 단계가 실패했습니다 — 위 요약을 확인하세요."
+            )
+
+    def _stage1_boundary(self, sido_code) -> str:
+        if self._boundary_done(sido_code):
+            self.stdout.write("[1/5] 경계: 이미 끝남, 건너뜀")
+            return "ok(이미 끝남)"
+
+        try:
+            al_d001_path = resolve_al_d001_zip_path(None)
+        except FileNotFoundError as exc:
+            reason = str(exc)
+            self._record_skipped(STAGE_BOUNDARY, sido_code, reason)
+            self.stdout.write(
+                self.style.ERROR(f"[1/5] 경계 중단: {reason}\n  {self._boundary_file_guidance()}")
+            )
+            return f"skipped: {reason}"
+
+        try:
+            with tracked_run(STAGE_BOUNDARY, sido_code, lock_ttl_seconds=1800):
+                load_regions(al_d001_path, level="sigungu", sido_prefix=sido_code)
+                load_regions(al_d001_path, level="bjd", sido_prefix=sido_code)
+                load_regions(None, level="sido", sido_prefix=sido_code)
+            self.stdout.write(self.style.SUCCESS("[1/5] 경계 완료"))
+            return "ok"
+        except JobSkipped:
+            self.stdout.write(self.style.WARNING("[1/5] 경계: 다른 실행 중이라 건너뜀"))
+            return "skipped: 다른 실행 중"
+        except Exception as exc:  # noqa: BLE001 — sync 전체를 안 죽이려고 넓게 잡음
+            self.stdout.write(self.style.ERROR(f"[1/5] 경계 실패: {exc}"))
+            return f"failed: {exc}"
+
+    def _stage2_buildings(self, sido_code) -> str:
+        if self._building_done(sido_code):
+            self.stdout.write("[2/5] 건물: 이미 끝남, 건너뜀")
+            return "ok(이미 끝남)"
+
+        try:
+            al_d010_path = resolve_building_zip_path(None, sido_code=sido_code)
+        except FileNotFoundError as exc:
+            reason = str(exc)
+            self._record_skipped(STAGE_BUILDINGS, sido_code, reason)
+            self.stdout.write(
+                self.style.WARNING(
+                    f"[2/5] 건물 건너뜀: {reason}\n  {self._building_file_guidance(sido_code)}"
+                )
+            )
+            return f"skipped: {reason}"
+
+        try:
+            with tracked_run(STAGE_BUILDINGS, sido_code, lock_ttl_seconds=3600):
+                load_buildings(al_d010_path, sido_code=sido_code)
+            self.stdout.write(self.style.SUCCESS("[2/5] 건물 완료"))
+            return "ok"
+        except JobSkipped:
+            self.stdout.write(self.style.WARNING("[2/5] 건물: 다른 실행 중이라 건너뜀"))
+            return "skipped: 다른 실행 중"
+        except Exception as exc:  # noqa: BLE001
+            self.stdout.write(self.style.ERROR(f"[2/5] 건물 실패: {exc}"))
+            return f"failed: {exc}"
+
+    def _stage3_trades(self, sido_code) -> str:
+        # 건물이 안 끝났으면 건너뜀(거래 위치가 건물 중심점이라 비어서 쌓임)
         if not self._building_done(sido_code):
-            self._record_skipped(STAGE_TRADES, sido_code, "건물 적재가 안 끝나서 건너뜀")
+            reason = "건물 적재가 안 끝나서 건너뜀"
+            self._record_skipped(STAGE_TRADES, sido_code, reason)
             self.stdout.write(
                 self.style.WARNING(
                     "[3/5] 실거래 건너뜀: 건물 적재가 안 끝났습니다(거래 위치가 건물 중심점이라 "
                     "비어서 쌓입니다). 건물 파일을 넣고 다시 실행하면 실거래부터 이어서 진행됩니다."
                 )
             )
-        else:
-            missing_months = self._missing_trade_months(sido_code)
-            if not missing_months:
-                self.stdout.write("[3/5] 실거래: 이미 끝남, 건너뜀")
-            else:
-                try:
-                    with tracked_run(STAGE_TRADES, sido_code, lock_ttl_seconds=3600 * 6):
-                        sync_trades_for_months(missing_months, sido_code=sido_code)
-                    self.stdout.write(
-                        self.style.SUCCESS(f"[3/5] 실거래 완료({len(missing_months)}개월 수집)")
-                    )
-                except JobSkipped:
-                    self.stdout.write(self.style.WARNING("[3/5] 실거래: 다른 실행 중이라 건너뜀"))
+            return f"skipped: {reason}"
 
-        # 4/5 위성 — 계절마다 진행 상황 출력, 빠진 계절만 처리
+        missing_months = self._missing_trade_months(sido_code)
+        if not missing_months:
+            self.stdout.write("[3/5] 실거래: 이미 끝남, 건너뜀")
+            return "ok(이미 끝남)"
+
+        if not settings.DATA_GO_KR_API_KEY:
+            reason = "DATA_GO_KR_API_KEY가 설정되지 않음"
+            self._record_skipped(STAGE_TRADES, sido_code, reason)
+            self.stdout.write(
+                self.style.WARNING(
+                    f"[3/5] 실거래 건너뜀: {reason} — 공공데이터포털에서 실거래가 공개시스템 "
+                    "API 키를 발급받아 .env에 넣고 다시 실행하세요."
+                )
+            )
+            return f"skipped: {reason}"
+
+        try:
+            with tracked_run(STAGE_TRADES, sido_code, lock_ttl_seconds=3600 * 6):
+                sync_trades_for_months(missing_months, sido_code=sido_code)
+            self.stdout.write(
+                self.style.SUCCESS(f"[3/5] 실거래 완료({len(missing_months)}개월 수집)")
+            )
+            return "ok"
+        except JobSkipped:
+            self.stdout.write(self.style.WARNING("[3/5] 실거래: 다른 실행 중이라 건너뜀"))
+            return "skipped: 다른 실행 중"
+        except Exception as exc:  # noqa: BLE001
+            self.stdout.write(self.style.ERROR(f"[3/5] 실거래 실패: {exc}"))
+            return f"failed: {exc}"
+
+    def _stage4_satellite(self, sido_code) -> str:
+        if not (
+            settings.CDSE_S3_ACCESS_KEY and settings.CDSE_S3_SECRET_KEY and settings.CDSE_S3_ENDPOINT
+        ):
+            reason = "CDSE_S3_ACCESS_KEY·CDSE_S3_SECRET_KEY·CDSE_S3_ENDPOINT가 설정되지 않음"
+            self._record_skipped(STAGE_SATELLITE, sido_code, reason)
+            self.stdout.write(
+                self.style.WARNING(
+                    f"[4/5] 위성 건너뜀: {reason} — Copernicus Data Space Ecosystem에서 S3 "
+                    "자격 증명을 발급받아 .env에 넣고 다시 실행하세요."
+                )
+            )
+            return f"skipped: {reason}"
+
         missing_seasons = self._missing_seasons(sido_code)
         if not missing_seasons:
             self.stdout.write("[4/5] 위성: 모든 계절 이미 게시됨, 건너뜀")
-        else:
-            self.stdout.write(f"[4/5] 위성: {len(missing_seasons)}개 계절 처리 시작")
-            for year, season in missing_seasons:
-                self.stdout.write(f"  - {year}-{season}: 처리 중...")
-                try:
-                    with tracked_run(
-                        STAGE_SATELLITE, sido_code, lock_ttl_seconds=3600 * 12
-                    ):
-                        run_backfill([(year, season)], sido_code=sido_code)
-                    self.stdout.write(self.style.SUCCESS(f"  - {year}-{season}: 완료"))
-                except JobSkipped:
-                    self.stdout.write(
-                        self.style.WARNING(f"  - {year}-{season}: 다른 실행 중이라 건너뜀")
-                    )
-            self.stdout.write(self.style.SUCCESS("[4/5] 위성 처리 끝"))
+            return "ok(이미 끝남)"
 
-        # 5/5 범죄
+        self.stdout.write(f"[4/5] 위성: {len(missing_seasons)}개 계절 처리 시작")
+        done = skipped = failed = 0
+        for year, season in missing_seasons:
+            self.stdout.write(f"  - {year}-{season}: 처리 중...")
+            try:
+                with tracked_run(STAGE_SATELLITE, sido_code, lock_ttl_seconds=3600 * 12):
+                    run_backfill([(year, season)], sido_code=sido_code)
+                self.stdout.write(self.style.SUCCESS(f"  - {year}-{season}: 완료"))
+                done += 1
+            except JobSkipped:
+                self.stdout.write(self.style.WARNING(f"  - {year}-{season}: 다른 실행 중이라 건너뜀"))
+                skipped += 1
+            except Exception as exc:  # noqa: BLE001
+                self.stdout.write(self.style.ERROR(f"  - {year}-{season}: 실패({exc})"))
+                failed += 1
+
+        summary = f"완료 {done}개, 건너뜀 {skipped}개, 실패 {failed}개"
+        self.stdout.write(self.style.SUCCESS(f"[4/5] 위성 처리 끝({summary})"))
+        if failed:
+            return f"failed: {summary}"
+        if skipped:
+            return f"skipped: {summary}"
+        return f"ok: {summary}"
+
+    def _stage5_crime(self, sido_code) -> str:
         if self._crime_done(sido_code):
             self.stdout.write("[5/5] 범죄: 이미 끝남, 건너뜀")
-        else:
-            if not settings.CRIME_FEATURE_CAP or not settings.CRIME_DATA_PERIOD:
-                reason = "CRIME_FEATURE_CAP·CRIME_DATA_PERIOD가 설정되지 않음"
-                self._record_skipped(STAGE_CRIME, sido_code, reason)
-                self.stdout.write(
-                    self.style.WARNING(
-                        f"[5/5] 범죄 건너뜀: {reason} — probe_crime_feature_cap --sido "
-                        f"{sido_code}를 먼저 실행해 .env를 채우세요."
-                    )
+            return "ok(이미 끝남)"
+
+        if not settings.CRIME_FEATURE_CAP or not settings.CRIME_DATA_PERIOD:
+            reason = "CRIME_FEATURE_CAP·CRIME_DATA_PERIOD가 설정되지 않음"
+            self._record_skipped(STAGE_CRIME, sido_code, reason)
+            self.stdout.write(
+                self.style.WARNING(
+                    f"[5/5] 범죄 건너뜀: {reason} — probe_crime_feature_cap --sido "
+                    f"{sido_code}를 먼저 실행해 .env를 채우세요."
                 )
-            else:
-                try:
-                    with tracked_run(STAGE_CRIME, sido_code, lock_ttl_seconds=3600 * 8):
-                        run_crime_sync(settings.CRIME_DATA_PERIOD, sido_code=sido_code)
-                    self.stdout.write(self.style.SUCCESS("[5/5] 범죄 완료"))
-                except JobSkipped:
-                    self.stdout.write(self.style.WARNING("[5/5] 범죄: 다른 실행 중이라 건너뜀"))
-                except FeatureCapNotConfigured as exc:
-                    self._record_skipped(STAGE_CRIME, sido_code, str(exc))
-                    self.stdout.write(self.style.WARNING(f"[5/5] 범죄 건너뜀: {exc}"))
+            )
+            return f"skipped: {reason}"
+
+        try:
+            with tracked_run(STAGE_CRIME, sido_code, lock_ttl_seconds=3600 * 8):
+                run_crime_sync(settings.CRIME_DATA_PERIOD, sido_code=sido_code)
+            self.stdout.write(self.style.SUCCESS("[5/5] 범죄 완료"))
+            return "ok"
+        except JobSkipped:
+            self.stdout.write(self.style.WARNING("[5/5] 범죄: 다른 실행 중이라 건너뜀"))
+            return "skipped: 다른 실행 중"
+        except FeatureCapNotConfigured as exc:
+            self._record_skipped(STAGE_CRIME, sido_code, str(exc))
+            self.stdout.write(self.style.WARNING(f"[5/5] 범죄 건너뜀: {exc}"))
+            return f"skipped: {exc}"
+        except Exception as exc:  # noqa: BLE001
+            self.stdout.write(self.style.ERROR(f"[5/5] 범죄 실패: {exc}"))
+            return f"failed: {exc}"
 
     def _sync_dry_run_report(self, sido_code):
         """아무것도 바꾸지 않고, 5단계 전부의 "이미 끝남"/"할 일"(파일 없으면 받을 곳까지)을
@@ -469,6 +562,14 @@ class Command(BaseCommand):
             missing_months = self._missing_trade_months(sido_code)
             if not missing_months:
                 self.stdout.write("[3/5] 실거래: 이미 끝남")
+            elif not settings.DATA_GO_KR_API_KEY:
+                self.stdout.write(
+                    self.style.WARNING(
+                        f"[3/5] 실거래: 할 일({len(missing_months)}개월) — 하지만 "
+                        "DATA_GO_KR_API_KEY가 설정되지 않아 건너뛸 예정(공공데이터포털에서 "
+                        "발급받아 .env에 넣으세요)"
+                    )
+                )
             else:
                 self.stdout.write(f"[3/5] 실거래: 할 일({len(missing_months)}개월)")
 
@@ -476,6 +577,16 @@ class Command(BaseCommand):
         missing_seasons = self._missing_seasons(sido_code)
         if not missing_seasons:
             self.stdout.write("[4/5] 위성: 모든 계절 이미 게시됨")
+        elif not (
+            settings.CDSE_S3_ACCESS_KEY and settings.CDSE_S3_SECRET_KEY and settings.CDSE_S3_ENDPOINT
+        ):
+            self.stdout.write(
+                self.style.WARNING(
+                    f"[4/5] 위성: 할 일({len(missing_seasons)}개 계절) — 하지만 "
+                    "CDSE_S3_ACCESS_KEY·CDSE_S3_SECRET_KEY·CDSE_S3_ENDPOINT가 설정되지 않아 "
+                    "건너뛸 예정(Copernicus Data Space Ecosystem에서 발급받아 .env에 넣으세요)"
+                )
+            )
         else:
             self.stdout.write(
                 f"[4/5] 위성: 할 일({len(missing_seasons)}개 계절: "

@@ -2,7 +2,7 @@ import logging
 
 from celery import shared_task
 
-from core.areas import enabled_sido_codes
+from core.areas import enabled_and_ready_sido_codes
 from core.jobs import TrackedTask, tracked_job
 
 from .sync import current_and_previous_month, sync_trades_for_months
@@ -23,5 +23,5 @@ def trade_sync(self, sido_code):
 def trigger_trade_sync_for_enabled_regions():
     """Beat가 매일 04:00(spec 5-1) 호출하는 디스패처 — 활성 지역마다 trade_sync를 하나씩
     돌린다(다지역 지원 7단계)."""
-    for sido_code in enabled_sido_codes():
+    for sido_code in enabled_and_ready_sido_codes():
         trade_sync.delay(sido_code)

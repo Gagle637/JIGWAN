@@ -2,6 +2,7 @@ from datetime import date
 
 import pytest
 
+from buildings.models import Region
 from core.models import ServiceArea
 from satellite.tasks import (
     _season_just_ended,
@@ -10,6 +11,27 @@ from satellite.tasks import (
     trigger_satellite_collect_for_enabled_regions,
     trigger_season_chain_for_last_season,
 )
+
+
+def _square_wkt(minx, miny, size=0.01):
+    maxx, maxy = minx + size, miny + size
+    return (
+        f"MULTIPOLYGON((({minx} {miny}, {maxx} {miny}, "
+        f"{maxx} {maxy}, {minx} {maxy}, {minx} {miny})))"
+    )
+
+
+def _make_ready_area(sido_code, name, enabled=True):
+    """경계(region level=sido)·grid까지 갖춘 "준비된" 지역을 만든다 — 디스패처가 도는
+    enabled_and_ready_sido_codes()의 조건을 만족시킨다(다지역 지원 10단계 중간 점검)."""
+    ServiceArea.objects.update_or_create(
+        sido_code=sido_code,
+        defaults={"name": name, "enabled": enabled, "grid": {"crs": "EPSG:32652"}},
+    )
+    Region.objects.get_or_create(
+        region_code=sido_code,
+        defaults={"level": "sido", "name": name, "geom": _square_wkt(127.0, 36.0)},
+    )
 
 
 def _all_signatures(canvas):
@@ -65,9 +87,10 @@ def test_season_just_ended_other_seasons():
 
 @pytest.mark.django_db
 def test_trigger_satellite_collect_dispatches_only_enabled_regions(monkeypatch):
-    """지금까지 한 번도 Beat에 등록된 적 없던 satellite_collect가, 활성 지역(service_area,
-    enabled=True)마다 하나씩 디스패치되는지 확인한다. 비활성 지역은 건너뛰어야 한다."""
-    ServiceArea.objects.create(sido_code="36", name="세종", enabled=True)
+    """지금까지 한 번도 Beat에 등록된 적 없던 satellite_collect가, 활성화되고 경계·격자까지
+    준비된 지역마다 하나씩 디스패치되는지 확인한다. 비활성 지역은 건너뛰어야 한다."""
+    _make_ready_area("30", "대전광역시")
+    _make_ready_area("36", "세종", enabled=True)
     ServiceArea.objects.create(sido_code="41", name="비활성", enabled=False)
 
     delay_calls = []
@@ -79,9 +102,31 @@ def test_trigger_satellite_collect_dispatches_only_enabled_regions(monkeypatch):
 
 
 @pytest.mark.django_db
+def test_trigger_satellite_collect_skips_enabled_but_not_ready_region(monkeypatch, caplog):
+    """enabled=True인데 아직 경계·격자가 준비되지 않은 지역(예: service_area가 enabled=True로
+    시딩됐지만 load_regions를 아직 안 돌린 경우)은 조용히 건너뛰고 경고를 남겨야 한다 —
+    예외로 태스크 전체가 깨지면 안 된다."""
+    # 마이그레이션이 이미 "30"을 enabled=True·grid=None으로 시딩해 두지만, 명시적으로 맞춰 둔다.
+    ServiceArea.objects.update_or_create(
+        sido_code="30", defaults={"name": "대전광역시", "enabled": True, "grid": None}
+    )
+
+    delay_calls = []
+    monkeypatch.setattr(satellite_collect, "delay", lambda sido_code: delay_calls.append(sido_code))
+
+    with caplog.at_level("WARNING"):
+        trigger_satellite_collect_for_enabled_regions()
+
+    assert delay_calls == []
+    assert "준비되지 않아" in caplog.text
+
+
+@pytest.mark.django_db
 def test_trigger_season_chain_for_last_season_dispatches_only_enabled_regions(monkeypatch):
-    """분기 트리거가 활성 지역마다 하나씩 체인을 돌리는지, 비활성 지역은 건너뛰는지 확인한다."""
-    ServiceArea.objects.create(sido_code="36", name="세종", enabled=True)
+    """분기 트리거가 활성화·준비된 지역마다 하나씩 체인을 돌리는지, 비활성 지역은
+    건너뛰는지 확인한다."""
+    _make_ready_area("30", "대전광역시")
+    _make_ready_area("36", "세종", enabled=True)
     ServiceArea.objects.create(sido_code="41", name="비활성", enabled=False)
 
     monkeypatch.setattr("satellite.tasks._season_just_ended", lambda today: (2026, "summer"))

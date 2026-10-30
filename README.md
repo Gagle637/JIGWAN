@@ -207,9 +207,11 @@ Windows PowerShell은 `scripts/areas.ps1`을 쓴다(둘 다 같은 동작).
 ### 스케줄 등록(Beat)
 
 ```bash
-docker compose exec api python manage.py seed_season_schedule
-docker compose exec api python manage.py seed_trade_schedule
-docker compose exec api python manage.py seed_safety_schedule
+docker compose exec api python manage.py seed_season_schedule     # 계절 종료 15일 후(분기 4번)
+docker compose exec api python manage.py seed_collect_schedule    # 위성 수집, 5일마다 02:00
+docker compose exec api python manage.py seed_trade_schedule      # 실거래 수집, 매일 04:00
+docker compose exec api python manage.py seed_safety_schedule     # 범죄주의구간, 매년 1월 첫째 주
+docker compose exec api python manage.py seed_cleanup_schedule    # 보관 기한 정리, 주 1회(월요일)
 ```
 
 ### 데모 모드
@@ -226,7 +228,7 @@ docker compose exec api pytest   # 전체 테스트
 | 데이터 | 출처 | 비고 |
 | --- | --- | --- |
 | 위성 영상 | Copernicus Sentinel-2 L2A (CDSE) | 표시 시 "Contains modified Copernicus Sentinel data [연도]" 표기 필요 |
-| 건물·행정경계 | 브이월드 GIS건물통합정보, SGIS 행정구역 | 공공데이터 |
+| 건물·행정경계 | 브이월드 GIS건물통합정보, 브이월드 법정구역정보(AL_D001) | 공공데이터 |
 | 실거래가 | 국토교통부 실거래가 공개시스템(공공데이터포털) | API 키 필요, 일 10,000회 한도 |
 | 범죄주의구간 | 경찰청 생활안전지도(안전Dream) | WMS, 제공처 고지("등급이 높다고 현재 위험하다는 뜻은 아님")를 레이어에 함께 표시 |
 | 배경지도 | OpenStreetMap | "© OpenStreetMap contributors" 표기, 공개 운영 전 자체 타일 서버로 교체 필요(OSM 공식 타일은 대량 사용 제한) |

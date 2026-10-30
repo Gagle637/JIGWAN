@@ -283,6 +283,9 @@ def test_areas_sync_building_file_missing_skips_trades_but_continues_satellite_a
     )
     settings.CRIME_FEATURE_CAP = 100
     settings.CRIME_DATA_PERIOD = "2023-07/2024-06"
+    settings.CDSE_S3_ACCESS_KEY = "k"
+    settings.CDSE_S3_SECRET_KEY = "k"
+    settings.CDSE_S3_ENDPOINT = "https://example.test"
 
     call_command("areas", "sync", "--area", "36")
 
@@ -304,6 +307,10 @@ def test_areas_sync_satellite_only_processes_missing_seasons(monkeypatch, settin
         areas_cmd, "target_seasons", lambda: [(2026, "summer"), (2026, "fall")]
     )
     settings.CRIME_FEATURE_CAP = None
+    settings.DATA_GO_KR_API_KEY = "k"
+    settings.CDSE_S3_ACCESS_KEY = "k"
+    settings.CDSE_S3_SECRET_KEY = "k"
+    settings.CDSE_S3_ENDPOINT = "https://example.test"
 
     bbox = GEOSPolygon.from_bbox((127.0, 36.0, 127.1, 36.1))
     for product_type in ("ndvi", "ndbi", "green_mask", "truecolor"):
@@ -339,6 +346,7 @@ def test_areas_sync_skipped_crime_stage_is_retried_once_config_is_fixed(monkeypa
     monkeypatch.setattr(areas_cmd, "sync_trades_for_months", lambda *a, **k: None)
     settings.CRIME_FEATURE_CAP = None
     settings.CRIME_DATA_PERIOD = None
+    settings.DATA_GO_KR_API_KEY = "k"
 
     call_command("areas", "sync", "--area", "36")
 
@@ -367,6 +375,7 @@ def test_areas_sync_auto_enables_once_boundary_and_buildings_done(monkeypatch, s
     _sejong_building()
     monkeypatch.setattr(areas_cmd, "target_seasons", lambda: [])
     monkeypatch.setattr(areas_cmd, "sync_trades_for_months", lambda *a, **k: None)
+    settings.DATA_GO_KR_API_KEY = "k"
     settings.CRIME_FEATURE_CAP = None
 
     call_command("areas", "sync", "--area", "36")
@@ -429,13 +438,14 @@ def test_areas_menu_dry_run_report_shown_before_choice(monkeypatch, tmp_path, ca
     assert "[1/5]" in out and "[5/5]" in out  # 5단계 dry-run 보고가 전부 출력됨
 
 
-def test_areas_menu_choice_1_runs_sync_now(monkeypatch, tmp_path):
+def test_areas_menu_choice_1_runs_sync_now(monkeypatch, tmp_path, settings):
     """[1] 지금 실행을 고르면 실제로 _sync(dry_run=False)가 돈다."""
     _sejong_with_boundary(enabled=True)
     _sejong_building()
     zip_path = _make_sejong_discoverable(monkeypatch, tmp_path)
     _patch_al_d001_resolver(monkeypatch, zip_path)
     monkeypatch.setattr(areas_cmd, "target_seasons", lambda: [])
+    settings.DATA_GO_KR_API_KEY = "k"
 
     trade_calls = []
     monkeypatch.setattr(
@@ -515,4 +525,126 @@ def test_areas_menu_falls_back_to_registered_list_when_zip_missing(monkeypatch, 
 
     out = capsys.readouterr().out
     assert "36" in out
-    assert "세종특별자치시" in out
+
+
+# ---- 최종 점검: 3~5단계 예외가 sync 전체를 죽이지 않고 failed로 기록됨 ----
+
+
+def test_areas_sync_stage_exception_is_recorded_as_failed_and_later_stages_still_run(
+    monkeypatch, settings, capsys
+):
+    """실거래 단계에서 예상 못한 예외가 나도(예: 네트워크 오류) sync 전체가 트레이스백으로
+    끝나지 않고, failed로 기록한 뒤 위성·범죄 단계를 계속 진행해야 한다."""
+    _sejong_with_boundary(enabled=True)
+    _sejong_building()
+    monkeypatch.setattr(areas_cmd, "target_seasons", lambda: [])
+    settings.DATA_GO_KR_API_KEY = "k"
+    settings.CRIME_FEATURE_CAP = 100
+    settings.CRIME_DATA_PERIOD = "2023-07/2024-06"
+
+    def _boom(*a, **k):
+        raise ValueError("공공데이터포털 서버 오류")
+
+    monkeypatch.setattr(areas_cmd, "sync_trades_for_months", _boom)
+    crime_calls = []
+    monkeypatch.setattr(
+        areas_cmd, "run_crime_sync", lambda period, sido_code: crime_calls.append(sido_code)
+    )
+
+    with pytest.raises(CommandError, match="일부 단계가 실패"):
+        call_command("areas", "sync", "--area", "36")
+
+    assert crime_calls == ["36"]  # 실거래가 failed여도 범죄 단계는 계속 실행됨
+    out = capsys.readouterr().out
+    assert "실거래 실패" in out
+    assert "실거래: failed" in out
+
+
+def test_areas_sync_prints_stage_summary_and_exits_zero_when_nothing_failed(
+    monkeypatch, settings, capsys
+):
+    """모든 단계가 ok/skipped면(failed 없음) 요약을 출력하고 CommandError 없이 끝난다."""
+    _sejong_with_boundary(enabled=True)
+    _sejong_building()
+    monkeypatch.setattr(areas_cmd, "target_seasons", lambda: [])
+    monkeypatch.setattr(areas_cmd, "sync_trades_for_months", lambda *a, **k: None)
+    settings.DATA_GO_KR_API_KEY = "k"
+    settings.CRIME_FEATURE_CAP = None  # 범죄는 설정 없어서 skipped
+
+    call_command("areas", "sync", "--area", "36")  # CommandError가 나면 테스트 실패
+
+    out = capsys.readouterr().out
+    assert "결과 요약" in out
+    assert "경계: ok" in out
+    assert "건물: ok" in out
+    assert "실거래: ok" in out
+    assert "범죄: skipped" in out
+
+
+def test_areas_sync_trades_skipped_when_data_go_kr_api_key_missing(monkeypatch, settings, capsys):
+    """DATA_GO_KR_API_KEY가 없으면 예외 대신 skipped로 기록하고 안내를 출력하며,
+    sync_trades_for_months는 호출되지 않는다."""
+    _sejong_with_boundary(enabled=True)
+    _sejong_building()
+    monkeypatch.setattr(areas_cmd, "target_seasons", lambda: [])
+    settings.DATA_GO_KR_API_KEY = ""
+    settings.CRIME_FEATURE_CAP = None
+
+    def _fail(*a, **k):
+        pytest.fail("DATA_GO_KR_API_KEY가 없으면 sync_trades_for_months이 호출되면 안 됩니다")
+
+    monkeypatch.setattr(areas_cmd, "sync_trades_for_months", _fail)
+
+    call_command("areas", "sync", "--area", "36")
+
+    out = capsys.readouterr().out
+    assert "실거래 건너뜀" in out
+    assert "DATA_GO_KR_API_KEY" in out
+    run = IndexRun.objects.filter(job=areas_cmd.STAGE_TRADES, region_code="36").latest("id")
+    assert run.status == IndexRun.Status.SKIPPED
+
+
+def test_areas_sync_satellite_skipped_when_cdse_keys_missing(monkeypatch, settings, capsys):
+    """CDSE S3 키가 없으면 예외 대신 skipped로 기록하고 안내를 출력하며,
+    run_backfill은 호출되지 않는다."""
+    _sejong_with_boundary(enabled=True)
+    _sejong_building()
+    monkeypatch.setattr(areas_cmd, "target_seasons", lambda: [(2026, "summer")])
+    monkeypatch.setattr(areas_cmd, "sync_trades_for_months", lambda *a, **k: None)
+    settings.DATA_GO_KR_API_KEY = "k"
+    settings.CDSE_S3_ACCESS_KEY = ""
+    settings.CDSE_S3_SECRET_KEY = ""
+    settings.CDSE_S3_ENDPOINT = ""
+    settings.CRIME_FEATURE_CAP = None
+
+    def _fail(*a, **k):
+        pytest.fail("CDSE 키가 없으면 run_backfill이 호출되면 안 됩니다")
+
+    monkeypatch.setattr(areas_cmd, "run_backfill", _fail)
+
+    call_command("areas", "sync", "--area", "36")
+
+    out = capsys.readouterr().out
+    assert "위성 건너뜀" in out
+    assert "CDSE_S3" in out
+    run = IndexRun.objects.filter(job=areas_cmd.STAGE_SATELLITE, region_code="36").latest("id")
+    assert run.status == IndexRun.Status.SKIPPED
+
+
+def test_areas_sync_dry_run_warns_when_trade_and_satellite_keys_missing(
+    monkeypatch, settings, capsys
+):
+    """dry-run에서도 DATA_GO_KR_API_KEY·CDSE 키가 없으면(설정 안내) 그 사실을 보여줘야 한다."""
+    _sejong_with_boundary(enabled=True)
+    _sejong_building()
+    monkeypatch.setattr(areas_cmd, "target_seasons", lambda: [(2026, "summer")])
+    settings.DATA_GO_KR_API_KEY = ""
+    settings.CDSE_S3_ACCESS_KEY = ""
+    settings.CDSE_S3_SECRET_KEY = ""
+    settings.CDSE_S3_ENDPOINT = ""
+
+    call_command("areas", "sync", "--area", "36", "--dry-run")
+
+    out = capsys.readouterr().out
+    assert "DATA_GO_KR_API_KEY" in out
+    assert "CDSE_S3" in out

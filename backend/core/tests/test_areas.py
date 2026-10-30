@@ -6,6 +6,7 @@ from buildings.models import Region
 from core.areas import (
     compute_and_store_grid,
     discover_available_areas,
+    enabled_and_ready_sido_codes,
     get_bbox,
     get_grid,
     get_sgg_codes,
@@ -21,6 +22,27 @@ def _square_wkt(minx, miny, size=0.01):
         f"MULTIPOLYGON((({minx} {miny}, {maxx} {miny}, "
         f"{maxx} {maxy}, {minx} {maxy}, {minx} {miny})))"
     )
+
+
+def test_enabled_and_ready_sido_codes_excludes_enabled_but_not_ready(caplog):
+    """enabled=True여도 region(level=sido)·grid가 없으면 빠지고 경고를 남긴다(10단계
+    중간 점검 — 새 DB에서 대전이 enabled=True인데 grid가 없던 문제)."""
+    ServiceArea.objects.create(sido_code="91", name="준비안됨", enabled=True)  # grid 없음
+    ServiceArea.objects.create(sido_code="92", name="비활성", enabled=False, grid={"crs": "x"})
+    Region.objects.create(
+        region_code="92", level="sido", name="비활성", geom=_square_wkt(128.0, 37.0)
+    )
+    ServiceArea.objects.create(sido_code="93", name="준비됨", enabled=True, grid={"crs": "x"})
+    Region.objects.create(
+        region_code="93", level="sido", name="준비됨", geom=_square_wkt(129.0, 38.0)
+    )
+
+    with caplog.at_level("WARNING"):
+        codes = enabled_and_ready_sido_codes()
+
+    assert codes == ["93"]
+    assert "91" in caplog.text
+    assert "준비되지 않아" in caplog.text
 
 
 def test_get_bbox_and_get_grid_raise_for_unknown_sido():

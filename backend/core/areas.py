@@ -3,12 +3,15 @@
 buildings를 함수 안에서 지연 임포트하는 이유: core는 모든 앱이 쓰는 기반 앱이라, 모듈
 최상단에서 buildings를 임포트하면 순환 임포트 위험이 있다.
 """
+import logging
 import math
 from pathlib import Path
 
 from django.conf import settings
 
 from .models import ServiceArea
+
+logger = logging.getLogger(__name__)
 
 SNAP_M = 60
 RESOLUTION_M = 10
@@ -45,13 +48,36 @@ def get_grid(sido_code: str) -> dict:
 
 
 def enabled_sido_codes() -> list[str]:
-    """활성화된(enabled=True) 지역의 시도 코드 목록(다지역 지원 7단계) — Beat 디스패처
-    태스크와, `--sido`를 생략한 관리 명령이 이 목록을 돈다."""
+    """활성화된(enabled=True) 지역의 시도 코드 목록(다지역 지원 7단계) — `--sido`를 생략한
+    관리 명령이 이 목록을 돈다(사람이 직접 실행하므로, 준비 안 된 지역이면 그 자리에서
+    에러로 바로 보인다 — 조용히 건너뛰지 않는다)."""
     return list(
         ServiceArea.objects.filter(enabled=True).order_by("sido_code").values_list(
             "sido_code", flat=True
         )
     )
+
+
+def enabled_and_ready_sido_codes() -> list[str]:
+    """활성화됐고(enabled=True) 경계·격자까지 준비된(region level=sido 존재 + grid 있음)
+    지역만 돌려준다(다지역 지원 10단계 중간 점검) — Beat 정기 배치 디스패처가 이 목록을
+    돈다. 사람이 안 보는 백그라운드 배치라, 준비 안 된 지역(예: service_area는
+    enabled=True로 시딩됐지만 load_regions/areas sync를 아직 안 돌린 경우)을 조용히
+    건너뛰지 않으면 매번 예외로 태스크가 깨진다 — 경고만 남기고 건너뛴다."""
+    from buildings.models import Region
+
+    ready = []
+    for area in ServiceArea.objects.filter(enabled=True).order_by("sido_code"):
+        has_sido_region = Region.objects.filter(level="sido", region_code=area.sido_code).exists()
+        if area.grid is not None and has_sido_region:
+            ready.append(area.sido_code)
+        else:
+            logger.warning(
+                "지역 '%s'(%s)는 활성화됐지만 경계·격자가 아직 준비되지 않아 "
+                "이번 배치에서 건너뜁니다(areas sync 또는 load_regions --sido %s를 먼저 실행하세요).",
+                area.sido_code, area.name, area.sido_code,
+            )
+    return ready
 
 
 def get_sgg_codes(sido_code: str) -> list[str]:

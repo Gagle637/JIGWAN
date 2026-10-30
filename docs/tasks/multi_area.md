@@ -233,21 +233,33 @@ index_run 키로 바꿔 뒀다 — 이 단계에서 남은 건 그 "30" 기본�
 통과). 위성 13계절 중 일부만 게시된 상태에서 다시 실행하면 빠진 계절만 처리, 건너뛴 단계(설정
 없음 등)가 다음 실행에서 다시 시도되는지 테스트로 확인.
 
-### 10. 대화형 메뉴 + 셸 스크립트 + 문서
+### 10. 대화형 메뉴 + 셸 스크립트 + 문서 — 완료(2026-10-30)
 
-**파일**: `backend/core/management/commands/areas.py`(인자 없이 실행하면 대화형 메뉴 — 현재
-지역+단계별 ✓/✗, 추가 가능 지역 번호 목록, 번호 선택 → `add` → `sync` 순서로 안내; 지역
-목록·추가 가능 목록은 `core.areas.list_available_areas`를 그대로 재사용), `scripts/areas.sh`(신설,
-`docker compose exec [-it] api python manage.py areas "$@"` 한 줄 래퍼 — 인자 없으면 `-it`),
-`README.md`("지역 추가 방법" 섹션 추가).
+**파일**: `backend/core/management/commands/areas.py`(인자 없이 실행하면 대화형 메뉴),
+`scripts/areas.sh`(신설, Git Bash/WSL/맥/리눅스용), `scripts/areas.ps1`(신설, PowerShell용),
+`README.md`("지역 추가 방법" 섹션), `docker-compose.yml`(api에 `./data/sync_logs:/app/logs`
+볼륨 추가), `.gitignore`(`data/sync_logs/*` 제외).
 
-**메모(2026-10-30 추가, README에 반영할 내용)**: `areas sync`의 위성 단계(13계절 백필)는 오래
-걸릴 수 있다(실측: CDSE 다운로드·합성 포함) — SSH 연결이 끊겨도 계속 돌게 `nohup`으로 백그라운드
-실행하는 방법을 README에 적는다:
+**대화형 메뉴 흐름(2026-10-30 확정, 당초 계획에서 바뀜)**: 지역 번호 선택 → 이미 등록된
+지역이면 `add` 생략, 미등록이면 `add` → **`sync --dry-run` 결과(5단계 전부, 파일 없으면
+받을 곳까지)를 보여줌** → `[1] 지금 실행 / [2] 백그라운드 실행 / [3] 취소` 선택. 지역 목록·
+추가 가능 목록은 `core.areas.list_available_areas`를 그대로 재사용(zip이 없으면 등록된
+지역만이라도 고를 수 있게 폴백). 이 dry-run 보고를 위해 `_sync`를 `_sync_dry_run_report`
+(아무것도 안 바꿈, 파일 없으면 안내 포함)와 실제 실행 두 갈래로 나눴다.
+
+**백그라운드 실행(2026-10-30 확정, 당초 계획의 호스트 `nohup`에서 바뀜)**: 호스트 `nohup`
+대신 **컨테이너 안에서 분리 실행**한다 — `data/`가 api에 읽기 전용으로 마운트돼 있어 로그를
+그 안에 못 쓰므로, 쓰기 가능한 `./data/sync_logs:/app/logs` 볼륨을 새로 추가했다.
 ```bash
-nohup ./scripts/areas.sh sync --area 36 > sync.log 2>&1 &
-tail -f sync.log   # 진행 상황(계절마다 한 줄씩) 확인
+./scripts/areas.sh sync --area 36 --background
+# → docker compose exec -d api sh -c "python manage.py areas sync --area 36 >> /app/logs/sync_36.log 2>&1"
+./scripts/areas.sh logs 36   # 그 로그를 tail -f
 ```
+`areas.ps1`도 같은 두 명령(`--background`/`logs`)을 지원한다. `--area` 값은 셸 인젝션을
+막으려고 영문·숫자·`_`·`-`만 허용하도록 검사한다. 대화형 메뉴의 "백그라운드 실행" 선택도
+이 명령을 안내만 한다(메뉴 자신은 컨테이너 밖 `docker compose`를 실행할 수 없음).
 
-**완료 기준**: `./scripts/areas.sh list`, `./scripts/areas.sh sync --area 30 --dry-run` 실행
-예시와 위 `nohup` 사용법을 README에 반영. 전체 pytest 통과.
+**완료 기준**: `./scripts/areas.sh list`, `./scripts/areas.sh sync --area 30 --dry-run`,
+`./scripts/areas.sh sync --area 36 --background` + `logs 36` 사용법을 README에 반영(PowerShell은
+`areas.ps1`로 안내). 전체 pytest 통과(504개) — **다지역 지원(docs/tasks/multi_area.md) 10단계
+전체 완료**.

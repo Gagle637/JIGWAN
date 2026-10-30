@@ -44,6 +44,14 @@ def _sejong_building():
     )
 
 
+def _patch_al_d001_resolver(monkeypatch, zip_path):
+    """discover_available_areas용 zip 경로 해석을 고정한다 — core.areas.list_available_areas
+    (자기 모듈 안에서 resolve_al_d001_zip_path를 부름)와 areas_cmd._sync*/_add(임포트해서
+    부름) 양쪽 다 패치해야 한다."""
+    monkeypatch.setattr("core.areas.resolve_al_d001_zip_path", lambda explicit_path=None: zip_path)
+    monkeypatch.setattr(areas_cmd, "resolve_al_d001_zip_path", lambda explicit_path=None: zip_path)
+
+
 def _make_al_d001_zip(path, entries: dict[str, bytes]):
     with zipfile.ZipFile(path, "w") as zf:
         for name, content in entries.items():
@@ -365,3 +373,146 @@ def test_areas_sync_auto_enables_once_boundary_and_buildings_done(monkeypatch, s
 
     area.refresh_from_db()
     assert area.enabled is True
+
+
+# ---- 대화형 메뉴 ----
+
+
+def _answer_sequence(*answers):
+    it = iter(answers)
+    return lambda prompt="": next(it)
+
+
+def test_areas_menu_selecting_registered_area_skips_add(monkeypatch, tmp_path, capsys):
+    """이미 등록된 지역을 고르면 add 없이 바로 동기화 상태(dry-run) 흐름으로 간다."""
+    zip_path = _make_sejong_discoverable(monkeypatch, tmp_path)
+    _patch_al_d001_resolver(monkeypatch, zip_path)
+    ServiceArea.objects.create(sido_code="36", name="세종특별자치시", enabled=False)
+
+    add_calls = []
+    monkeypatch.setattr(
+        areas_cmd.Command, "_add", lambda self, code, path: add_calls.append(code)
+    )
+    monkeypatch.setattr(areas_cmd, "target_seasons", lambda: [])
+
+    monkeypatch.setattr("builtins.input", _answer_sequence("1", "3"))
+
+    call_command("areas")
+
+    assert add_calls == []  # 이미 등록돼 있으니 add가 호출되면 안 됨
+    out = capsys.readouterr().out
+    assert "동기화 상태" in out
+
+
+def test_areas_menu_selecting_unregistered_area_calls_add(monkeypatch, tmp_path):
+    zip_path = _make_sejong_discoverable(monkeypatch, tmp_path)
+    _patch_al_d001_resolver(monkeypatch, zip_path)
+    monkeypatch.setattr(areas_cmd, "target_seasons", lambda: [])
+
+    monkeypatch.setattr("builtins.input", _answer_sequence("1", "3"))
+
+    call_command("areas")
+
+    assert ServiceArea.objects.filter(sido_code="36").exists()
+
+
+def test_areas_menu_dry_run_report_shown_before_choice(monkeypatch, tmp_path, capsys):
+    zip_path = _make_sejong_discoverable(monkeypatch, tmp_path)
+    _patch_al_d001_resolver(monkeypatch, zip_path)
+    monkeypatch.setattr(areas_cmd, "target_seasons", lambda: [])
+
+    monkeypatch.setattr("builtins.input", _answer_sequence("1", "3"))
+
+    call_command("areas")
+
+    out = capsys.readouterr().out
+    assert "[1/5]" in out and "[5/5]" in out  # 5단계 dry-run 보고가 전부 출력됨
+
+
+def test_areas_menu_choice_1_runs_sync_now(monkeypatch, tmp_path):
+    """[1] 지금 실행을 고르면 실제로 _sync(dry_run=False)가 돈다."""
+    _sejong_with_boundary(enabled=True)
+    _sejong_building()
+    zip_path = _make_sejong_discoverable(monkeypatch, tmp_path)
+    _patch_al_d001_resolver(monkeypatch, zip_path)
+    monkeypatch.setattr(areas_cmd, "target_seasons", lambda: [])
+
+    trade_calls = []
+    monkeypatch.setattr(
+        areas_cmd, "sync_trades_for_months", lambda *a, **k: trade_calls.append(a)
+    )
+
+    monkeypatch.setattr("builtins.input", _answer_sequence("1", "1"))
+
+    call_command("areas")
+
+    assert len(trade_calls) == 1  # 실거래 단계까지 실제로 실행됨
+
+
+def test_areas_menu_choice_2_prints_background_command_and_does_not_run_sync(
+    monkeypatch, tmp_path, capsys
+):
+    _sejong_with_boundary(enabled=True)
+    _sejong_building()
+    zip_path = _make_sejong_discoverable(monkeypatch, tmp_path)
+    _patch_al_d001_resolver(monkeypatch, zip_path)
+    monkeypatch.setattr(areas_cmd, "target_seasons", lambda: [])
+
+    def _fail(*a, **k):
+        pytest.fail("백그라운드를 고르면 sync_trades_for_months이 호출되면 안 됩니다")
+
+    monkeypatch.setattr(areas_cmd, "sync_trades_for_months", _fail)
+
+    monkeypatch.setattr("builtins.input", _answer_sequence("1", "2"))
+
+    call_command("areas")
+
+    out = capsys.readouterr().out
+    assert "--background" in out
+    assert "areas.sh logs 36" in out
+    assert "areas.ps1 logs 36" in out
+
+
+def test_areas_menu_choice_3_cancels(monkeypatch, tmp_path):
+    _sejong_with_boundary(enabled=True)
+    _sejong_building()
+    zip_path = _make_sejong_discoverable(monkeypatch, tmp_path)
+    _patch_al_d001_resolver(monkeypatch, zip_path)
+    monkeypatch.setattr(areas_cmd, "target_seasons", lambda: [])
+
+    def _fail(*a, **k):
+        pytest.fail("취소했는데 sync_trades_for_months이 호출되면 안 됩니다")
+
+    monkeypatch.setattr(areas_cmd, "sync_trades_for_months", _fail)
+
+    monkeypatch.setattr("builtins.input", _answer_sequence("1", "3"))
+
+    call_command("areas")  # 예외 없이 끝나야 함
+
+
+def test_areas_menu_empty_choice_exits_without_second_prompt(monkeypatch, tmp_path):
+    zip_path = _make_sejong_discoverable(monkeypatch, tmp_path)
+    _patch_al_d001_resolver(monkeypatch, zip_path)
+
+    monkeypatch.setattr("builtins.input", _answer_sequence(""))  # 두 번째 input()을 부르면 StopIteration
+
+    call_command("areas")  # 예외 없이 바로 끝나야 함
+
+
+def test_areas_menu_falls_back_to_registered_list_when_zip_missing(monkeypatch, capsys):
+    """AL_D001 zip이 없으면 이미 등록된 지역만이라도 고를 수 있어야 한다."""
+    ServiceArea.objects.create(sido_code="36", name="세종특별자치시", enabled=True)
+
+    def _raise(explicit_path=None):
+        raise FileNotFoundError("zip 없음")
+
+    monkeypatch.setattr("core.areas.resolve_al_d001_zip_path", _raise)
+    monkeypatch.setattr(areas_cmd, "resolve_al_d001_zip_path", _raise)
+
+    monkeypatch.setattr("builtins.input", _answer_sequence(""))
+
+    call_command("areas")
+
+    out = capsys.readouterr().out
+    assert "36" in out
+    assert "세종특별자치시" in out

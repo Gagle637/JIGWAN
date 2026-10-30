@@ -49,6 +49,7 @@ services:
       - ./data/satellite_scenes:/app/data/satellite_scenes  # 장면별 COG(90일 보관, 결과 COG와 다름)
       - ./docker/data/cog:/app/docker/data/cog  # run_season_chain 관리 명령이 여기 쓴다(7단계)
       - ./docker/data/crime_tiles:/app/docker/data/crime_tiles  # 범죄주의구간 WMS 타일 캐시(9단계)
+      - ./data/sync_logs:/app/logs  # areas.sh/areas.ps1 --background 로그(data/는 ro라 따로 둠, 10단계)
     # extra_hosts로 host.docker.internal:host-gateway를 넣어봤는데(리눅스 호환 의도),
     # Docker Desktop(Windows/Mac)은 이미 이 이름을 기본 제공해서 중복 항목(그중 IPv6는
     # 연결 자체가 안 됨)이 생겨 오히려 이름 해석이 깨지는 걸 실측했다(worker-gpu의 Ollama

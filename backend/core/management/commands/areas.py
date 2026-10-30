@@ -26,7 +26,7 @@ class Command(BaseCommand):
     help = "서비스 지역(service_area) 관리: list/status/available/add/enable/disable/sync."
 
     def add_arguments(self, parser):
-        sub = parser.add_subparsers(dest="action", required=True)
+        sub = parser.add_subparsers(dest="action", required=False)
 
         sub.add_parser("list", help="등록된 지역 전체를 보여준다.")
 
@@ -60,7 +60,9 @@ class Command(BaseCommand):
 
     def handle(self, *args, **options):
         action = options["action"]
-        if action == "list":
+        if action is None:
+            self._interactive_menu()
+        elif action == "list":
             self._list()
         elif action == "status":
             self._status(options["sido"])
@@ -277,16 +279,33 @@ class Command(BaseCommand):
             job=job, region_code=sido_code, status=IndexRun.Status.SKIPPED, error=reason
         )
 
+    @staticmethod
+    def _boundary_file_guidance() -> str:
+        return (
+            '국가공간정보포털/브이월드에서 "법정구역정보"(전국)를 내려받아 '
+            "data/raw/AL_D001_00_YYYYMMDD.zip 형식으로 넣으세요."
+        )
+
+    @staticmethod
+    def _building_file_guidance(sido_code: str) -> str:
+        return (
+            '브이월드에서 "GIS건물통합정보"를 내려받아 '
+            f"data/raw/AL_D010_{sido_code}_YYYYMMDD.zip 형식으로 넣으세요. "
+            "건물 파일을 넣고 다시 실행하면 실거래부터 이어서 진행됩니다."
+        )
+
     def _sync(self, sido_code, dry_run):
         area = ServiceArea.objects.filter(sido_code=sido_code).first()
         if area is None:
             raise CommandError(f"'{sido_code}'는 등록된 지역이 아닙니다 — 먼저 areas add를 실행하세요.")
 
+        if dry_run:
+            self._sync_dry_run_report(sido_code)
+            return
+
         # 1/5 경계
         if self._boundary_done(sido_code):
             self.stdout.write("[1/5] 경계: 이미 끝남, 건너뜀")
-        elif dry_run:
-            self.stdout.write("[1/5] 경계: 할 일")
         else:
             try:
                 al_d001_path = resolve_al_d001_zip_path(None)
@@ -295,9 +314,7 @@ class Command(BaseCommand):
                 self._record_skipped(STAGE_BOUNDARY, sido_code, reason)
                 self.stdout.write(
                     self.style.ERROR(
-                        f"[1/5] 경계 중단: {reason}\n"
-                        "  국가공간정보포털/브이월드에서 \"법정구역정보\"(전국)를 내려받아 "
-                        "data/raw/AL_D001_00_YYYYMMDD.zip 형식으로 넣고 다시 실행하세요."
+                        f"[1/5] 경계 중단: {reason}\n  {self._boundary_file_guidance()}"
                     )
                 )
                 return
@@ -316,8 +333,6 @@ class Command(BaseCommand):
         # 2/5 건물
         if self._building_done(sido_code):
             self.stdout.write("[2/5] 건물: 이미 끝남, 건너뜀")
-        elif dry_run:
-            self.stdout.write("[2/5] 건물: 할 일")
         else:
             try:
                 al_d010_path = resolve_building_zip_path(None, sido_code=sido_code)
@@ -326,10 +341,7 @@ class Command(BaseCommand):
                 self._record_skipped(STAGE_BUILDINGS, sido_code, reason)
                 self.stdout.write(
                     self.style.WARNING(
-                        f"[2/5] 건물 건너뜀: {reason}\n"
-                        "  브이월드에서 \"GIS건물통합정보\"를 내려받아 "
-                        f"data/raw/AL_D010_{sido_code}_YYYYMMDD.zip 형식으로 넣으세요. "
-                        "건물 파일을 넣고 다시 실행하면 실거래부터 이어서 진행됩니다."
+                        f"[2/5] 건물 건너뜀: {reason}\n  {self._building_file_guidance(sido_code)}"
                     )
                 )
             else:
@@ -341,7 +353,7 @@ class Command(BaseCommand):
                     self.stdout.write(self.style.WARNING("[2/5] 건물: 다른 실행 중이라 건너뜀"))
 
         # 경계+건물이 (이번 실행이든 이전이든) 끝나 있으면 자동 활성화
-        if not dry_run and self._boundary_done(sido_code) and self._building_done(sido_code):
+        if self._boundary_done(sido_code) and self._building_done(sido_code):
             if not area.enabled:
                 area.enabled = True
                 area.save(update_fields=["enabled"])
@@ -351,10 +363,7 @@ class Command(BaseCommand):
 
         # 3/5 실거래 — 건물이 안 끝났으면 건너뜀(거래 위치가 건물 중심점이라 비어서 쌓임)
         if not self._building_done(sido_code):
-            if not dry_run:
-                self._record_skipped(
-                    STAGE_TRADES, sido_code, "건물 적재가 안 끝나서 건너뜀"
-                )
+            self._record_skipped(STAGE_TRADES, sido_code, "건물 적재가 안 끝나서 건너뜀")
             self.stdout.write(
                 self.style.WARNING(
                     "[3/5] 실거래 건너뜀: 건물 적재가 안 끝났습니다(거래 위치가 건물 중심점이라 "
@@ -365,8 +374,6 @@ class Command(BaseCommand):
             missing_months = self._missing_trade_months(sido_code)
             if not missing_months:
                 self.stdout.write("[3/5] 실거래: 이미 끝남, 건너뜀")
-            elif dry_run:
-                self.stdout.write(f"[3/5] 실거래: 할 일({len(missing_months)}개월)")
             else:
                 try:
                     with tracked_run(STAGE_TRADES, sido_code, lock_ttl_seconds=3600 * 6):
@@ -381,12 +388,6 @@ class Command(BaseCommand):
         missing_seasons = self._missing_seasons(sido_code)
         if not missing_seasons:
             self.stdout.write("[4/5] 위성: 모든 계절 이미 게시됨, 건너뜀")
-        elif dry_run:
-            self.stdout.write(
-                f"[4/5] 위성: 할 일({len(missing_seasons)}개 계절: "
-                + ", ".join(f"{y}-{s}" for y, s in missing_seasons)
-                + ")"
-            )
         else:
             self.stdout.write(f"[4/5] 위성: {len(missing_seasons)}개 계절 처리 시작")
             for year, season in missing_seasons:
@@ -406,8 +407,6 @@ class Command(BaseCommand):
         # 5/5 범죄
         if self._crime_done(sido_code):
             self.stdout.write("[5/5] 범죄: 이미 끝남, 건너뜀")
-        elif dry_run:
-            self.stdout.write("[5/5] 범죄: 할 일")
         else:
             if not settings.CRIME_FEATURE_CAP or not settings.CRIME_DATA_PERIOD:
                 reason = "CRIME_FEATURE_CAP·CRIME_DATA_PERIOD가 설정되지 않음"
@@ -428,3 +427,161 @@ class Command(BaseCommand):
                 except FeatureCapNotConfigured as exc:
                     self._record_skipped(STAGE_CRIME, sido_code, str(exc))
                     self.stdout.write(self.style.WARNING(f"[5/5] 범죄 건너뜀: {exc}"))
+
+    def _sync_dry_run_report(self, sido_code):
+        """아무것도 바꾸지 않고, 5단계 전부의 "이미 끝남"/"할 일"(파일 없으면 받을 곳까지)을
+        보여준다 — 대화형 메뉴도 이 메서드를 그대로 쓴다."""
+        # 1/5 경계
+        if self._boundary_done(sido_code):
+            self.stdout.write("[1/5] 경계: 이미 끝남")
+        else:
+            try:
+                resolve_al_d001_zip_path(None)
+                self.stdout.write("[1/5] 경계: 할 일(파일 있음)")
+            except FileNotFoundError as exc:
+                self.stdout.write(
+                    self.style.WARNING(
+                        f"[1/5] 경계: 할 일(파일 없음: {exc})\n    {self._boundary_file_guidance()}"
+                    )
+                )
+
+        # 2/5 건물
+        if self._building_done(sido_code):
+            self.stdout.write("[2/5] 건물: 이미 끝남")
+        else:
+            try:
+                resolve_building_zip_path(None, sido_code=sido_code)
+                self.stdout.write("[2/5] 건물: 할 일(파일 있음)")
+            except FileNotFoundError as exc:
+                self.stdout.write(
+                    self.style.WARNING(
+                        f"[2/5] 건물: 할 일(파일 없음: {exc})\n"
+                        f"    {self._building_file_guidance(sido_code)}"
+                    )
+                )
+
+        # 3/5 실거래
+        if not self._building_done(sido_code):
+            self.stdout.write(
+                self.style.WARNING("[3/5] 실거래: 건물 적재가 안 끝나서 건너뛸 예정")
+            )
+        else:
+            missing_months = self._missing_trade_months(sido_code)
+            if not missing_months:
+                self.stdout.write("[3/5] 실거래: 이미 끝남")
+            else:
+                self.stdout.write(f"[3/5] 실거래: 할 일({len(missing_months)}개월)")
+
+        # 4/5 위성
+        missing_seasons = self._missing_seasons(sido_code)
+        if not missing_seasons:
+            self.stdout.write("[4/5] 위성: 모든 계절 이미 게시됨")
+        else:
+            self.stdout.write(
+                f"[4/5] 위성: 할 일({len(missing_seasons)}개 계절: "
+                + ", ".join(f"{y}-{s}" for y, s in missing_seasons)
+                + ")"
+            )
+
+        # 5/5 범죄
+        if self._crime_done(sido_code):
+            self.stdout.write("[5/5] 범죄: 이미 끝남")
+        elif not settings.CRIME_FEATURE_CAP or not settings.CRIME_DATA_PERIOD:
+            self.stdout.write(
+                self.style.WARNING(
+                    "[5/5] 범죄: 할 일(CRIME_FEATURE_CAP·CRIME_DATA_PERIOD 설정 필요 — "
+                    f"probe_crime_feature_cap --sido {sido_code}를 먼저 실행하세요)"
+                )
+            )
+        else:
+            self.stdout.write("[5/5] 범죄: 할 일")
+
+    # ---- 대화형 메뉴 (인자 없이 실행) ----
+
+    def _stage_flags(self, sido_code: str) -> str:
+        boundary = "✓" if self._boundary_done(sido_code) else "✗"
+        building = "✓" if self._building_done(sido_code) else "✗"
+        trades = "✓" if self._building_done(sido_code) and not self._missing_trade_months(
+            sido_code
+        ) else "✗"
+        satellite = "✓" if not self._missing_seasons(sido_code) else "✗"
+        crime = "✓" if self._crime_done(sido_code) else "✗"
+        return f"경계{boundary} 건물{building} 실거래{trades} 위성{satellite} 범죄{crime}"
+
+    def _selectable_entries(self):
+        """추가 가능한 지역 목록(zip 기준) — 없으면 이미 등록된 지역만이라도 고를 수 있게
+        돌려준다."""
+        try:
+            return list_available_areas(), None
+        except FileNotFoundError as exc:
+            entries = [
+                {
+                    "sido_code": area.sido_code,
+                    "name": area.name,
+                    "sigungu_count": None,
+                    "status": "사용 중" if area.enabled else "비활성",
+                }
+                for area in ServiceArea.objects.order_by("sido_code")
+            ]
+            return entries, str(exc)
+
+    def _interactive_menu(self):
+        self.stdout.write(self.style.SUCCESS("=== 지금 서비스 중인 지역 ==="))
+        areas = list(ServiceArea.objects.order_by("sido_code"))
+        if not areas:
+            self.stdout.write("  (없음)")
+        for area in areas:
+            state = "활성" if area.enabled else "비활성"
+            self.stdout.write(
+                f"  {area.sido_code} {area.name} [{state}] {self._stage_flags(area.sido_code)}"
+            )
+
+        self.stdout.write("")
+        self.stdout.write(self.style.SUCCESS("=== 추가 가능한 지역 ==="))
+        entries, discover_error = self._selectable_entries()
+        if discover_error:
+            self.stdout.write(self.style.WARNING(f"  (zip에서 목록을 못 가져옴: {discover_error})"))
+        if not entries:
+            self.stdout.write("  (없음)")
+            return
+        for i, entry in enumerate(entries, start=1):
+            sigungu = f"시군구 {entry['sigungu_count']}개, " if entry["sigungu_count"] is not None else ""
+            self.stdout.write(
+                f"  {i}) {entry['sido_code']} {entry['name']} ({sigungu}[{entry['status']}])"
+            )
+
+        self.stdout.write("")
+        choice = input("번호를 선택하세요(그냥 Enter로 종료): ").strip()
+        if not choice:
+            return
+        try:
+            entry = entries[int(choice) - 1]
+        except (ValueError, IndexError):
+            self.stdout.write(self.style.ERROR("잘못된 번호입니다."))
+            return
+
+        sido_code = entry["sido_code"]
+        if not ServiceArea.objects.filter(sido_code=sido_code).exists():
+            self._add(sido_code, None)
+
+        self.stdout.write("")
+        self.stdout.write(self.style.SUCCESS(f"=== {sido_code} {entry['name']} 동기화 상태 ==="))
+        self._sync_dry_run_report(sido_code)
+
+        self.stdout.write("")
+        decision = input("[1] 지금 실행  [2] 백그라운드 실행  [3] 취소: ").strip()
+        if decision == "1":
+            self._sync(sido_code, dry_run=False)
+        elif decision == "2":
+            self.stdout.write(
+                "호스트 셸에서 다음을 실행하세요(컨테이너 안에서 분리 실행):\n"
+                f"  ./scripts/areas.sh sync --area {sido_code} --background"
+                "   (Git Bash/WSL/맥/리눅스)\n"
+                f"  .\\scripts\\areas.ps1 sync --area {sido_code} --background"
+                "   (PowerShell)\n"
+                "진행 상황은 다음으로 봅니다:\n"
+                f"  ./scripts/areas.sh logs {sido_code}   또는   "
+                f".\\scripts\\areas.ps1 logs {sido_code}"
+            )
+        else:
+            self.stdout.write("취소했습니다.")

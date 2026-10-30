@@ -15,6 +15,10 @@ docker/data/cog/*
 data/satellite_scenes/*
 !data/satellite_scenes/.gitkeep
 
+# areas.sh/areas.ps1 --background 로그
+data/sync_logs/*
+!data/sync_logs/.gitkeep
+
 # Python
 __pycache__/
 *.py[cod]

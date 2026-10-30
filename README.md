@@ -160,6 +160,50 @@ insight가 2초 안에 응답)을 다음으로 확인한다.
 docker compose exec api python manage.py measure_insight_latency --count 20
 ```
 
+### 지역 추가 방법(대전 외 다른 시도)
+
+위 "기반 데이터 적재"·"초기 적재(백필)"는 대전(시도 코드 30) 기준이다. 다른 시도를 추가로
+서비스하려면 `areas` 관리 명령을 쓴다 — Git Bash/WSL/맥/리눅스는 `scripts/areas.sh`,
+Windows PowerShell은 `scripts/areas.ps1`을 쓴다(둘 다 같은 동작).
+
+```bash
+./scripts/areas.sh                            # 대화형 메뉴(지역 목록 → 번호 선택 → 적재 안내)
+./scripts/areas.sh list                       # 등록된 지역 + grid/활성화 여부
+./scripts/areas.sh status                     # 지역별 단계 진행 상황(경계·건물·실거래·위성·범죄)
+./scripts/areas.sh available                  # 추가 가능한 지역(AL_D001_00 zip 기준)
+./scripts/areas.sh add 36                     # 세종을 비활성 상태로 등록(실제 수집은 안 함)
+./scripts/areas.sh sync --area 36 --dry-run   # 할 일/이미 끝난 일만 확인(아무것도 안 바꿈)
+./scripts/areas.sh sync --area 36             # 경계→건물→실거래→위성→범죄 순으로 실행
+```
+
+```powershell
+.\scripts\areas.ps1
+.\scripts\areas.ps1 sync --area 36 --dry-run
+.\scripts\areas.ps1 sync --area 36
+```
+
+`sync`는 완료 여부를 실제 데이터로 판단한다(이미 끝난 단계는 건너뜀) — 중간에 끊겨도 같은
+명령을 다시 실행하면 안 끝난 단계부터 이어서 진행한다(위성은 계절 단위로 이어하기, 실거래는
+달 단위로 이어하기). 원본 파일(`AL_D001_00_*`, `AL_D010_{시도}_*`)이 없으면 어디서 받는지
+안내만 하고 그 단계를 건너뛴다. 경계·건물 적재가 모두 끝나면 그 지역은 자동으로
+활성화(`enabled=True`)된다.
+
+위성 13계절 백필은 오래 걸릴 수 있다(CDSE 다운로드·합성 포함). SSH 연결이 끊겨도 계속
+돌도록, 컨테이너 안에서 분리 실행(`docker compose exec -d`)하고 로그는 파일로 남길 수 있다:
+
+```bash
+./scripts/areas.sh sync --area 36 --background   # 컨테이너 안에서 분리 실행
+./scripts/areas.sh logs 36                        # 진행 상황(로그) 확인, tail -f
+```
+
+```powershell
+.\scripts\areas.ps1 sync --area 36 --background
+.\scripts\areas.ps1 logs 36
+```
+
+대화형 메뉴(`./scripts/areas.sh` 인자 없이 실행)에서도 지역을 고른 뒤 "지금 실행"이 아니라
+"백그라운드 실행"을 선택하면 위 명령을 그대로 안내해 준다.
+
 ### 스케줄 등록(Beat)
 
 ```bash

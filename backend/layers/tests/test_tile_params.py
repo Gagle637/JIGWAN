@@ -10,10 +10,15 @@ from layers.tile_params import (
 )
 
 
-def test_build_titiler_url_uses_urlencode_for_query_string():
+def test_build_titiler_url_uses_titiler_public_url_and_real_cog_tile_path(settings):
+    """TiTiler 0.18 실제 REST 경로(/cog/tiles/WebMercatorQuad/{z}/{x}/{y}.png)와
+    TITILER_PUBLIC_URL(브라우저가 접근하는 주소)을 쓰는지 확인한다(실측 확인 전엔
+    존재하지 않는 "/tiles/{z}/{x}/{y}" 경로였다)."""
+    settings.TITILER_PUBLIC_URL = "http://localhost:8001"
+
     url = build_titiler_url("/data/cog/green_2026_summer.tif", GREEN_MASK_TILE_PARAMS)
 
-    assert url.startswith("/tiles/{z}/{x}/{y}?")
+    assert url.startswith("http://localhost:8001/cog/tiles/WebMercatorQuad/{z}/{x}/{y}.png?")
     query = urlparse(url).query
     params = parse_qs(query)
     assert params["url"] == [titiler_cog_url("/data/cog/green_2026_summer.tif")]

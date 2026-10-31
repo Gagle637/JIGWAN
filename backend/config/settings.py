@@ -213,6 +213,10 @@ LLM_MODEL = env("LLM_MODEL", default="")
 # 감안해 480초로 둔다(사용자 결정 180초 → 실측 후 480초로 조정).
 LLM_TIMEOUT_SECONDS = env.int("LLM_TIMEOUT_SECONDS", default=480)
 TITILER_BASE_URL = env("TITILER_BASE_URL", default="")
+# map_layer.source_params.tile_url·insight.change.tiles에 넣어 브라우저로 보내는 주소.
+# TITILER_BASE_URL(컨테이너 간 통신용, 예: http://titiler:8000)과 달리 브라우저가 실제로
+# 접근 가능한 주소라야 한다(실측 확인: docker-compose의 titiler 포트 매핑은 8001:8000).
+TITILER_PUBLIC_URL = env("TITILER_PUBLIC_URL", default="http://localhost:8001")
 
 # STAC 검색의 eo:cloud_cover 상한. 장면 메타데이터의 구름양은 타일 전체(약 110km) 기준이라
 # 대전 위가 맑아도 다른 데가 흐리면 걸러질 수 있다 — 실제 구름 화소 제외는 장면 안에서 SCL로

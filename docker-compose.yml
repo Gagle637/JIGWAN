@@ -154,6 +154,10 @@ services:
 
   titiler:
     image: ghcr.io/developmentseed/titiler:0.18.6
+    # 베이스 이미지(uvicorn-gunicorn)는 PORT 미지정 시 80에서 뜬다 — PORT=8000을 안 주면
+    # ports/healthcheck가 가리키는 8000엔 아무것도 안 떠서 healthcheck가 계속 실패한다(실측 확인).
+    environment:
+      PORT: "8000"
     ports:
       - "8001:8000"
     volumes:

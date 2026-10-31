@@ -4,6 +4,8 @@ import json
 from pathlib import Path
 from urllib.parse import urlencode
 
+from django.conf import settings
+
 TRUECOLOR_TILE_PARAMS = {"bidx": [1, 2, 3], "rescale": "0,3000"}
 GREEN_MASK_COLORMAP = {"0": [0, 0, 0, 0], "1": [34, 139, 34, 255]}
 GREEN_MASK_TILE_PARAMS = {"nodata": 255, "colormap": json.dumps(GREEN_MASK_COLORMAP)}
@@ -17,8 +19,10 @@ def titiler_cog_url(cog_path: str) -> str:
 
 
 def build_titiler_url(cog_path: str, params: dict) -> str:
-    """'/tiles/{z}/{x}/{y}?url=...&...' 템플릿을 만든다. urlencode(doseq=True)로 bidx처럼
-    리스트 값은 bidx=1&bidx=2&bidx=3 형태로, colormap 같은 JSON 문자열은 그대로 퍼센트
-    인코딩된다."""
+    """'{TITILER_PUBLIC_URL}/cog/tiles/WebMercatorQuad/{z}/{x}/{y}.png?url=...&...' 템플릿을
+    만든다(TiTiler 0.18 실제 REST 경로 — 실측 확인). urlencode(doseq=True)로 bidx처럼 리스트
+    값은 bidx=1&bidx=2&bidx=3 형태로, colormap 같은 JSON 문자열은 그대로 퍼센트 인코딩된다.
+    url 파라미터는 TiTiler 컨테이너 안에서 보이는 COG 경로(titiler_cog_url)다."""
     query = urlencode({"url": titiler_cog_url(cog_path), **params}, doseq=True)
-    return f"/tiles/{{z}}/{{x}}/{{y}}?{query}"
+    base = settings.TITILER_PUBLIC_URL.rstrip("/")
+    return f"{base}/cog/tiles/WebMercatorQuad/{{z}}/{{x}}/{{y}}.png?{query}"

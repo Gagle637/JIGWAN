@@ -60,7 +60,7 @@ def test_dry_run_list_scenes_creates_listed_rows_and_skips_existing(monkeypatch)
         "S2B_MSIL2A_20230620T085559_N0512_R007_T52SCF_20230620T111845", "2023-06-20T08:55:59Z"
     )
 
-    def fake_search_scenes(start, end, bbox=None):
+    def fake_search_scenes(start, end, bbox=None, max_cloud=None):
         if start.year == 2023 and start.month in (6, 7, 8):
             return [
                 FakeItem(existing.scene_id, "2023-06-15T08:55:59Z"),

@@ -446,6 +446,7 @@ def test_areas_menu_choice_1_runs_sync_now(monkeypatch, tmp_path, settings):
     _patch_al_d001_resolver(monkeypatch, zip_path)
     monkeypatch.setattr(areas_cmd, "target_seasons", lambda: [])
     settings.DATA_GO_KR_API_KEY = "k"
+    settings.CRIME_FEATURE_CAP = None  # 실제 .env 값과 무관하게 범죄 단계는 건너뛰도록 고정
 
     trade_calls = []
     monkeypatch.setattr(

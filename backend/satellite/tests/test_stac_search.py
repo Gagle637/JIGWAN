@@ -1,10 +1,12 @@
 from datetime import date
 
+from satellite import stac_search
 from satellite.stac_search import (
     baseline_number,
     dedupe_latest_baseline,
     group_by_date,
     processing_baseline,
+    search_scenes,
     sensed_at,
     tile_code,
 )
@@ -70,3 +72,26 @@ def test_group_by_date_groups_two_tiles_same_day():
     assert len(groups) == 2
     assert len(groups[date(2026, 8, 9)]) == 2
     assert len(groups[date(2026, 8, 14)]) == 1
+
+
+def test_search_scenes_uses_cql2_json_filter_not_cql2_text(monkeypatch):
+    """CDSE STAC는 filter_lang="cql2-text"에 문자열 식을 주면 "Input should be a valid
+    dictionary"로 거부한다(실측 확인) — cql2-json(dict)으로 보내는지 확인한다."""
+    captured = {}
+
+    class FakeSearch:
+        def items(self):
+            return []
+
+    class FakeCatalog:
+        def search(self, **kwargs):
+            captured.update(kwargs)
+            return FakeSearch()
+
+    monkeypatch.setattr(stac_search.Client, "open", lambda url: FakeCatalog())
+
+    search_scenes(date(2026, 6, 1), date(2026, 8, 31), bbox=[127.0, 36.0, 127.1, 36.1])
+
+    assert captured["filter_lang"] == "cql2-json"
+    assert isinstance(captured["filter"], dict)
+    assert captured["filter"] == {"op": "<=", "args": [{"property": "eo:cloud_cover"}, 30]}

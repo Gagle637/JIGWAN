@@ -65,7 +65,9 @@ def test_listed_scene_is_not_treated_as_already_collected(monkeypatch):
     )
 
     monkeypatch.setattr(
-        collect_module, "search_scenes", lambda start, end, bbox=None: [listed_item, done_item]
+        collect_module,
+        "search_scenes",
+        lambda start, end, bbox=None, max_cloud=None: [listed_item, done_item],
     )
     ingested_ids = []
     monkeypatch.setattr(
@@ -101,7 +103,9 @@ def test_scene_already_done_in_another_region_is_still_new_for_this_region(monke
         cog_path="/tmp/x.tif",
     )
 
-    monkeypatch.setattr(collect_module, "search_scenes", lambda start, end, bbox=None: [item])
+    monkeypatch.setattr(
+        collect_module, "search_scenes", lambda start, end, bbox=None, max_cloud=None: [item]
+    )
     ingested_ids = []
     monkeypatch.setattr(
         collect_module,
@@ -113,3 +117,23 @@ def test_scene_already_done_in_another_region_is_still_new_for_this_region(monke
 
     assert item.id in ingested_ids
     assert result["skipped_existing"] == 0
+
+
+def test_collect_scenes_passes_settings_max_cloud_pct_to_search(monkeypatch, settings):
+    """eo:cloud_cover 상한은 .env의 SATELLITE_MAX_CLOUD_PCT를 그대로 쓴다(장마철 여름 계절이
+    타일 전체 구름양 때문에 장면 0~2개로 잘려 나가던 문제의 해결책) — 기본값 30이 아니라
+    settings 값이 search_scenes로 전달되는지 확인한다."""
+    settings.SATELLITE_MAX_CLOUD_PCT = 70
+    captured = {}
+    monkeypatch.setattr(
+        collect_module,
+        "search_scenes",
+        lambda start, end, bbox=None, max_cloud=None: captured.update(max_cloud=max_cloud) or [],
+    )
+    monkeypatch.setattr(
+        collect_module, "ingest_date_group", lambda items, grid=None, sido_code=None: []
+    )
+
+    collect_module.collect_scenes(date(2026, 6, 1), date(2026, 8, 31), sido_code="30")
+
+    assert captured["max_cloud"] == 70

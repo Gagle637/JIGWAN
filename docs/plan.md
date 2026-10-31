@@ -81,14 +81,14 @@ MVP는 사용자 기능 여섯 가지(F1–F6)와 이를 받치는 위성 분석
 | 건물 풋프린트 | 건물 폴리곤 175,270동 + 건축물대장 표제부 속성(용도·면적·사용승인일·층수 등) | 브이월드 GIS건물통합정보(AL\_D010) 대전 파일(EPSG:5186, CP949, 확보 완료 → PostGIS 적재 | PNU, 건물 ID | 분기 1회 |
 | 건축물대장 | 용도, 대지면적, 연면적, 건폐율, 용적률, 사용승인일, 세대수 | MVP는 GIS건물통합정보에 붙은 속성 사용. 세대수·총괄표제부가 필요하면 2단계에 세움터 파일 추가 | 시군구·법정동 코드 + 번·지 | 건물 파일과 함께 분기 1회 |
 | 실거래가 | 아파트·오피스텔·연립다세대·단독다가구 매매 및 전월세 | 공공데이터포털 국토부 실거래가 API | 시군구코드 + 계약월, 지번으로 PNU 매칭 | 일 1회(당월·전월 재수집) |
-| 생활안전 | 범죄주의구간(전체) 밀도 구역별 등급 GRAD(10단계, 경찰청 밀도분석) | 생활안전지도 WMS GetFeatureInfo(2km 구역 단위 호출 → 밀도 구역 폴리곤 저장) | 밀도 구역 폴리곤 geometry | 연 1회 |
-| 베이스맵·경계 | 배경지도, 시군구·법정동 경계 | OSM 타일(MVP), 법정구역 경계(시도·시군구·읍면동, 브이월드·국가공간정보포털 파일, 법정동 코드 기준. SGIS 행정동 경계는 코드 체계가 달라 쓰지 않음) | 행정구역 코드 | 배경지도는 실시간 타일, 경계는 연 1회 적재 |
+| 생활안전 | 범죄주의구간(전체) 밀도 구역별 등급 GRAD(10단계, 경찰청 밀도분석) | 생활안전지도 WMS GetFeatureInfo(2km 구역 단위 호출 → 밀도 구역 geometry 저장) | 밀도 구역 geometry | 연 1회 |
+| 베이스맵·경계 | 배경지도, 시군구·법정동 경계 | OSM 타일(MVP), 브이월드 법정구역정보(AL\_D001: 시군구·읍면동 SHP, 시도는 시군구를 합쳐 생성, 법정동 코드 기준. SGIS 행정동 경계는 코드 체계가 달라 쓰지 않음) | 행정구역 코드 | 배경지도는 실시간 타일, 경계는 연 1회 적재 |
 
 지역 뉴스(네이버 검색 API)는 추가개발로 보류해 MVP 데이터 소스에서 뺐다. 데이터 수집에서 정한 원칙은 세 가지다.
 
 - 위성은 STAC(pystac-client)로 검색하고 CDSE S3 키로 다운로드한다. 대전을 덮는 Sentinel-2 타일은 검색 결과의 타일 코드로 확인하고, 두 타일에 걸치면 같은 날짜 장면을 합쳐 쓴다.
 - 대량 데이터(건물 폴리곤과 건축물대장 속성, 행정경계)는 API 대신 파일로 받아 적재해 호출 한도 문제를 피한다. API는 실거래와 범죄주의구간에만 쓴다.
-- 범죄주의구간 GetFeatureInfo는 밀도 구역 폴리곤 geometry 포함, EPSG:3857 지원, 이용 조건을 확인했다(기술 명세 8-3). 공식 게이트웨이는 GetFeatureInfo를 막아둬서 지도 화면이 쓰는 내부 GeoServer 엔드포인트로 호출한다. 배경지도는 MVP에서 OSM을 쓴다.
+- 범죄주의구간 GetFeatureInfo는 밀도 구역 geometry 포함, EPSG:3857 지원, 이용 조건을 확인했다(기술 명세 8-3). 공식 게이트웨이는 GetFeatureInfo를 막아둬서, 수집은 지도 화면이 쓰는 내부 GeoServer 주소로 한다(비공식 경로라 바뀌거나 막힐 수 있음). 배경지도는 MVP에서 OSM을 쓴다.
 
 ## 5. 분석 방법론: 사전 분석과 조회 시 계산
 
@@ -145,7 +145,7 @@ GIS건물통합정보에 붙은 건축물대장 속성에서 용도, 대지면�
 
 ### 5-6. 범죄 안전 진단 (F4)
 
-생활안전지도 범죄주의구간(전체)의 밀도 구역별 등급(GRAD, 10단계)을 연 1회 수집해 밀도 구역 폴리곤과 함께 저장해 두고, 조회 시 반경과 겹치는 구역으로 최고 등급·주의구역 면적·고등급 비중·건물 인접 등급을 구한다. 지도에는 같은 데이터를 WMS 레이어로 겹쳐 보여준다. 등급은 1(낮음)\~10(높음)이며, 높을수록 과거 발생 밀도가 높았다는 뜻일 뿐 현재 위험을 뜻하지 않으므로 ‘위험’ 표현은 쓰지 않는다. 주의구간이 없는 곳은 ‘주의구간 미지정’으로 표현하고 데이터 기간(최근 1년)을 함께 적는다. 교통·화재 등 다른 안전 지표는 MVP에서 제외한다.
+생활안전지도 범죄주의구간(전체)의 밀도 구역별 등급(GRAD, 10단계)을 연 1회 수집해 밀도 구역 geometry와 함께 저장해 두고, 조회 시 반경과 겹치는 구역으로 최고 등급·주의구역 면적·고등급 비중·건물 인접 등급을 구한다. 지도에는 같은 데이터를 WMS 레이어로 겹쳐 보여준다. 등급은 1(낮음)\~10(높음)이며, 높을수록 과거 발생 밀도가 높았다는 뜻일 뿐 현재 위험을 뜻하지 않으므로 ‘위험’ 표현은 쓰지 않는다. 주의구간이 없는 곳은 ‘주의구간 미지정’으로 표현하고 데이터 기간(최근 1년)을 함께 적는다. 교통·화재 등 다른 안전 지표는 MVP에서 제외한다.
 
 ### 5-7. AI 입지 리포트 (F5, gpt-oss)
 
@@ -192,7 +192,7 @@ GIS건물통합정보에 붙은 건축물대장 속성에서 용도, 대지면�
 
 ## 8. API 및 데이터 모델
 
-건물 조회 API는 로그인 없이도 쓸 수 있고, 리포트·즐겨찾기·메모는 로그인한 사용자별 리소스다. 리포트는 생성 요청을 받으면 바로 id를 돌려주고 비동기로 만든다. 배치 상태 확인과 수동 재실행은 관리자 API로만 한다.
+건물 조회 API는 로그인 없이도 쓸 수 있고, 리포트·즐겨찾기·메모는 로그인한 사용자별 리소스다. 리포트는 생성 요청을 받으면 바로 id를 돌려주고 비동기로 만든다. 배치 상태 확인과 수동 재실행은 관리 명령(CLI)과 Django 관리자 화면으로 한다.
 
 ### 8-1. REST API (Django REST Framework)
 
@@ -202,17 +202,17 @@ GIS건물통합정보에 붙은 건축물대장 속성에서 용도, 대지면�
 | GET | `/api/buildings/search?q=` | 주소·단지명 검색 | 후보 목록(PNU, 주소, 중심 좌표) |
 | GET | `/api/buildings/at?lon=&lat=` | 클릭 좌표의 건물 조회(ST\_Intersects) | 건물 ID, PNU, 폴리곤 GeoJSON |
 | GET | `/api/buildings/{id}/insight?radius=500` | 반경 계산: 위성 지표·스펙·시세 요약·범죄 | 지표 + 기준일, 로그인 시 내 표시·내 리포트 수 |
-| GET | `/api/buildings/{id}/trades?months=24&type=` | 반경 내 실거래 목록 | 거래 목록, 월별 ㎡당 중앙값 |
-| GET | `/api/buildings/{id}/changes` | 반경 내 변화 구역 | 변화 폴리곤 GeoJSON, 면적·시기 |
+| GET | `/api/buildings/{id}/trades?months=24&type=` | 반경 내 실거래 목록(보류: insight.trades로 대체, 프론트에서 필요할 때 추가) | 거래 목록, 월별 ㎡당 중앙값 |
+| GET | `/api/buildings/{id}/changes` | 반경 내 변화 구역(보류: insight.change로 대체) | 변화 폴리곤 GeoJSON, 면적·시기 |
 | GET | `/api/buildings/{id}/reports` | 이 건물의 내 리포트 목록(최신순) | id·종류·프롬프트 요약·상태·생성일 |
 | POST | `/api/buildings/{id}/reports` | 리포트 생성 요청(`template` 또는 `custom` + 프롬프트) | `report_id`, `status: generating` |
 | GET, DELETE | `/api/reports/{report_id}` | 리포트 조회·삭제(본인 것만) | 리포트 JSON 또는 `generating` |
 | PUT, DELETE | `/api/buildings/{id}/mark` | 즐겨찾기·폴더·색상·라벨·메모 저장·해제 | 저장된 값 |
 | GET | `/api/me/buildings?bbox=`&folder\_id= | 내가 표시한 건물(지도 레이어용) | GeoJSON(폴리곤, 즐겨찾기, 색상, 라벨) |
-| GET | `/api/products?type=&from=&to=&bbox=` | 결과 카탈로그 검색 | 결과 목록(종류, 기간, bbox, 타일 주소) |
+| GET | `/api/products?type=&from=&to=&bbox=` | 결과 카탈로그 검색(보류: 프론트에서 필요할 때 추가) | 결과 목록(종류, 기간, bbox, 타일 주소) |
 | GET | `/api/layers`, `/api/layers/{id}/tiles/{z}/{x}/{y}.png` | 레이어 목록, 외부 WMS 중계 | 레이어 설정, PNG 타일 |
 | GET | `/tiles/{z}/{x}/{y}?url=` | TiTiler 다이내믹 타일(녹지 마스크, Before/After) | PNG 타일 |
-| GET, POST | `/api/admin/index-runs` | 배치 실행 이력·수동 재실행(관리자) | 잡·지역·상태, `run_id` |
+| GET, POST | `/api/admin/index-runs` | 배치 실행 이력·수동 재실행(보류: 관리 명령과 Django 관리자 화면으로 대체) | 잡·지역·상태, `run_id` |
 | GET, POST | `/api/me/favorites` | 내 즐겨찾기 폴더 트리 조회·폴더 생성 | 폴더 트리 JSON, 새 폴더 id |
 | PATCH, DELETE | `/api/me/favorites/{folder_id}` | 이름·색상·숨김 변경, 다른 폴더로 이동·순서 변경, 삭제 | 변경된 폴더 |
 | POST | `/api/me/favorites/{folder_id}/buildings` | 여러 건물을 한 번에 폴더로 이동 | 이동된 건물 수 |
@@ -228,14 +228,15 @@ GIS건물통합정보에 붙은 건축물대장 속성에서 용도, 대지면�
 | `region_stat` | region\_code(→ region), product\_id, green\_ratio | 지역 기준선 |
 | `parcel_register` | MVP 제외. 세대수·총괄표제부가 필요해지면 세움터 파일로 추가(2단계) | 공공데이터 동기화 |
 | `trade` | id, sgg\_code, pnu, house\_type, deal\_type, deal\_ym, area\_m2, price, deposit, monthly\_rent, geom(Point, 4326) | 공공데이터 동기화 |
-| `crime_segment` | objt\_id, grad, data\_period, geom(LineString, 4326) | 범죄주의구간 수집 |
+| `crime_segment` | objt\_id, grad, data\_period, geom(MultiPolygon, 4326) | 범죄주의구간 수집 |
 | `map_layer` | 레이어 레지스트리(기술 명세 10-2) | 수동 등록, `safety_sync` |
-| `user` | Django 기본 사용자 모델 | 회원가입 |
+| `user` | accounts.User(AbstractUser 상속, email 고유·로그인 식별자), AUTH\_USER\_MODEL로 지정 | 회원가입 |
 | `user_building` | user\_id, building\_id, is\_favorite, folder\_id, color, label(20자 이내), memo, updated\_at, unique(user\_id, building\_id) | 즐겨찾기·메모 저장 |
 | `report` | id, user\_id, building\_id, radius\_m, report\_type(template·custom), template\_version, user\_prompt, input\_snapshot(JSONB), model, prompt\_version, payload(JSONB), status, created\_at | 사용자 요청 시 생성 |
 | `index_run` | id, job, region\_code, status, started\_at, finished\_at, error | 모든 잡(실행 기록) |
 | `favorite_folder` | id, user\_id, parent\_id(자기 참조), name, color, is\_hidden, sort\_order, created\_at | 즐겨찾기 폴더 관리 |
 | `region` | region\_code(PK: 시도 2자리·시군구 5자리·법정동 10자리), level(sido·sigungu·bjd), name, parent\_code(자기 참조), geom(MultiPolygon, 4326), source\_date | 행정경계 적재(buildings 앱) |
+| `service_area` | sido\_code(PK), name, enabled, grid(EPSG:32652), bbox(4326), added\_at | 서비스 지역 목록(core 앱, areas 명령). 기술 명세 11장 |
 
 반경 계산 결과는 (건물, 반경, 사용한 `raster_product` id 목록)을 키로 캐시해 사용자 간에 공유한다. 리포트는 사용자별로 따로 만들고, 생성 당시의 입력(`input_snapshot`)과 프롬프트를 함께 저장해 나중에 데이터가 갱신돼도 어떤 데이터로 만든 리포트인지 추적할 수 있게 한다.
 

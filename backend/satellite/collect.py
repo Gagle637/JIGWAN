@@ -2,6 +2,8 @@
 import logging
 from datetime import date
 
+from django.conf import settings
+
 from core.areas import get_bbox, get_grid
 
 from .ingest import ingest_date_group
@@ -16,7 +18,7 @@ def collect_scenes(start: date, end: date, sido_code: str) -> dict:
     건너뛴다. sido_code(다지역 지원 2단계)로 검색 bbox·격자를 정한다."""
     bbox = get_bbox(sido_code)
     grid = get_grid(sido_code)
-    items = search_scenes(start, end, bbox=bbox)
+    items = search_scenes(start, end, bbox=bbox, max_cloud=settings.SATELLITE_MAX_CLOUD_PCT)
     items = dedupe_latest_baseline(items)
     date_groups = group_by_date(items)
 

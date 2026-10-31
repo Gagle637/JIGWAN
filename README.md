@@ -146,6 +146,12 @@ docker compose exec api python manage.py seed_map_layers
 docker compose exec api python manage.py probe_crime_feature_cap   # .env의 CRIME_FEATURE_CAP·CRIME_DATA_PERIOD 채운 뒤 재시작
 ```
 
+생활안전지도 범죄주의구간은 연 1회 갱신된다. `CRIME_DATA_PERIOD`는 "수집한 시점"이 아니라
+원본 데이터가 실제로 다루는 기간이므로, 원본이 갱신되면(보통 연초) 생활안전지도에서 데이터
+기준 기간을 확인해 `.env`의 `CRIME_DATA_PERIOD`를 그 기간으로 바꾸고 컨테이너를 재시작한
+뒤(`docker compose up -d api beat worker-io worker-cpu worker-gpu`) `safety_sync`를 다시
+돌린다. 원본이 안 바뀌었다면(연중 재실행) 같은 기간이 다시 올 뿐이므로 재수집할 필요는 없다.
+
 ### 13단계: 초기 적재(백필)
 
 ```bash
@@ -155,6 +161,14 @@ docker compose exec api python manage.py backfill             # 13개 계절 + �
 계절 단위로 멱등이라 중간에 끊겨도 같은 명령을 다시 실행하면 이미 게시된 계절은 건너뛰고
 안 끝난 계절부터 이어서 진행한다. 백필이 끝나면 spec 4장 완료 기준(샘플 건물 20곳에서
 insight가 2초 안에 응답)을 다음으로 확인한다.
+
+장마철 여름 계절은 구름 때문에 장면 자체가 비어 있을 수 있다(실측 확인: 대전 2026-summer가
+`SATELLITE_MAX_CLOUD_PCT` 기본값 30일 때 장면 22개 중 2개만 통과해 최소 관측 수(3회) 기준에
+못 미쳐 합성 전체가 nodata로 나온 적 있음 — 70으로 올려 해결). `eo:cloud_cover`는 타일
+전체(약 110km) 기준이라 대전 위가 맑아도 걸러질 수 있으므로, 실제 구름 화소 제외는 장면
+안에서 SCL로 픽셀 단위로 하고 이 값은 너그럽게 둔다. 그래도 어떤 계절이 유효 비율 10%
+미만으로 남으면(비구름 요인 포함) `raster_product.is_published`가 false로 남고, 그 계절은
+`insight`에서 `green`·`change`가 `null`로 빠진다 — 오류가 아니라 데이터 부족이다.
 
 ```bash
 docker compose exec api python manage.py measure_insight_latency --count 20

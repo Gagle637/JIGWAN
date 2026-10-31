@@ -7,15 +7,18 @@ STAC_URL = "https://stac.dataspace.copernicus.eu/v1/"
 
 
 def search_scenes(start: date, end: date, bbox, max_cloud: int = 30) -> list:
-    """spec 2-1 예제 코드 그대로 pystac-client로 검색한다. bbox는 core.areas.get_bbox(sido_code)
-    (EPSG:4326, 다지역 지원 2단계)로 호출부가 넘긴다."""
+    """CDSE STAC로 검색한다. bbox는 core.areas.get_bbox(sido_code)(EPSG:4326, 다지역 지원
+    2단계)로 호출부가 넘긴다.
+
+    filter_lang="cql2-text"에 문자열 식을 주면 CDSE가 "Input should be a valid dictionary"로
+    거부한다(실측 확인) — CDSE STAC API는 cql2-text를 지원하지 않고 cql2-json(딥)만 받는다."""
     catalog = Client.open(STAC_URL)
     search = catalog.search(
         collections=["sentinel-2-l2a"],
         bbox=bbox,
         datetime=f"{start.isoformat()}/{end.isoformat()}",
-        filter=f"eo:cloud_cover <= {max_cloud}",
-        filter_lang="cql2-text",
+        filter={"op": "<=", "args": [{"property": "eo:cloud_cover"}, max_cloud]},
+        filter_lang="cql2-json",
     )
     return list(search.items())
 

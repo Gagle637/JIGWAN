@@ -45,11 +45,33 @@ search = cat.search(
     collections=["sentinel-2-l2a"],
     bbox=[127.24, 36.18, 127.56, 36.50],   # 대전 대략 범위(경계 폴리곤으로 교체)
     datetime="2026-06-01/2026-08-31",
-    filter="eo:cloud_cover <= 30",
-    filter_lang="cql2-text",
+    filter={"op": "<=", "args": [{"property": "eo:cloud_cover"}, 30]},
+    filter_lang="cql2-json",   # 실측 확인: CDSE는 cql2-text(문자열 식)를 거부하고 cql2-json(dict)만 받음
 )
 items = list(search.items())
 tiles = {item.id.split("_")[5] for item in items}   # 예: {"T52SCF", ...}
+```
+
+STAC 항목의 에셋 키와 S3 접근 설정은 CDSE 문서([STAC 카탈로그 활용 가이드](https://dataspace.copernicus.eu/news/2025-4-15-exploring-cdse-stac-catalogue-powerful-metadata-discovery-and-abstraction-tool))와 STAC 브라우저의 실제 항목으로 확인했다.
+
+| 필요한 밴드 | 에셋 키 |
+| --- | --- |
+| B02 · B03 · B04 · B08 (10m) | `B02_10m`, `B03_10m`, `B04_10m`, `B08_10m` |
+| B11 (20m) | `B11_20m` |
+| SCL (20m) | `SCL_20m` |
+| (참고) 트루컬러 미리보기 | `TCI_10m` |
+
+- 같은 밴드가 해상도별로 여러 키(`B04_10m`, `B04_20m`, `B04_60m`)로 들어 있으므로, 패턴 매칭이 아니라 위 키를 정확히 지정한다.
+- 에셋 href는 `s3://eodata/.../{장면}.SAFE/GRANULE/.../IMG_DATA/R10m/{타일}_{날짜}_B04_10m.jp2` 형식이다. `MTD_MSIL2A.xml`은 href를 `.SAFE/`까지 자른 뒤 파일명을 붙여 경로를 만든다(메타데이터 에셋 키에 의존하지 않음).
+- 같은 에셋에 https 다운로드 주소도 있지만 토큰이 필요하므로, 우리는 `s3://` 경로를 S3 키로 읽는다.
+
+```python
+# rasterio/GDAL로 CDSE S3를 읽을 때의 환경 변수(키는 .env)
+os.environ["AWS_S3_ENDPOINT"] = "eodata.dataspace.copernicus.eu"
+os.environ["AWS_ACCESS_KEY_ID"] = CDSE_S3_ACCESS_KEY
+os.environ["AWS_SECRET_ACCESS_KEY"] = CDSE_S3_SECRET_KEY
+os.environ["AWS_HTTPS"] = "YES"
+os.environ["AWS_VIRTUAL_HOSTING"] = "FALSE"
 ```
 
 ### 2-2. 반사율 변환
@@ -186,7 +208,7 @@ MVP는 대전 전역을 결과 하나로 저장하므로 기간당 보통 한 �
 | `catalog_publish` | 두 잡 완료 후 | cpu | 검증 통과 시 카탈로그 게시(5-3) |
 | `trade_sync` | 매일 04:00 | io | 당월·전월 재수집 |
 | `register_sync` | 매월 1일 05:00 | io | MVP 제외(건축물대장 속성은 building\_load로 함께 적재, 8-6) |
-| `safety_sync` | 매년 1월 첫째 주 + 수동 | io | 범죄주의 밀도 구역 수집, 레이어 범례 갱신 |
+| `safety_sync` | 매년 1월 첫째 주 + 수동 | io | 범죄주의 밀도 구역 수집(범례는 고정 파일, layers/fixtures/crime\_legend\_tot.json) |
 | `building_load` | 수동(새 파일을 받았을 때) | cpu | GIS건물통합정보 파일 적재 |
 
 리포트는 스케줄 잡이 아니다. 사용자가 리포트를 요청하면 API가 gpu 큐에 생성 작업을 넣는다.
@@ -198,7 +220,7 @@ MVP는 대전 전역을 결과 하나로 저장하므로 기간당 보통 한 �
 | 항목 | 규칙 |
 | --- | --- |
 | 체이닝 | Celery canvas: `season_composite → group(change_analysis, region_stat) → catalog_publish`. 앞 단계가 실패하면 뒤 단계는 실행하지 않음 |
-| 멱등성 키 | `(job, region_code, year, season)`. 같은 키의 기존 행을 한 트랜잭션 안에서 지우고 다시 쓴다 |
+| 멱등성 키 | `(job, region_code, year, season)`. `index_run`에는 year·season을 region\_code 문자열에 함께 넣어 기록한다(예: `daejeon:2026:summer`). 같은 키의 기존 행을 한 트랜잭션 안에서 지우고 다시 쓴다 |
 | 파일 쓰기 | 임시 경로에 쓴 뒤 완료 시 rename. 중간에 죽어도 반쯤 쓴 COG가 남지 않음 |
 | 동시 실행 방지 | Redis 잠금 `lock:{job}:{region_code}`(TTL = 잡 최대 시간 × 2). 잠금이 있으면 `skipped`로 기록 |
 | 재시도 | 외부 호출 오류(네트워크, 5xx, 429)만 3회, 1·5·25분 간격. 데이터 오류는 재시도하지 않고 즉시 `failed` |
@@ -463,43 +485,41 @@ Reasoning: low
 
 ### 8-3. 범죄 안전(생활안전지도 범죄주의구간)
 
-범죄 안전은 생활안전지도의 [범죄주의구간(전체)](https://www.safemap.go.kr/opna/data/dataViewRenew.do?objtId=205) 레이어를 쓴다. 경찰청이 5대 범죄(살인·강도·성폭력·절도·폭력)의 최근 1년 발생을 밀도분석해 구역(폴리곤)마다 10단계 등급(`GRAD`)을 매긴 데이터라, 시군구가 아니라 건물 반경 단위로 집계할 수 있다([공공데이터포털 설명](https://www.data.go.kr/data/15101797/openapi.do)).
+범죄 안전은 생활안전지도의 [범죄주의구간(전체)](https://www.safemap.go.kr/opna/data/dataViewRenew.do?objtId=205) 레이어를 쓴다. 경찰청이 5대 범죄(살인·강도·성폭력·절도·폭력)의 최근 1년 발생을 밀도분석해 밀도 구역마다 10단계 등급(`GRAD`)을 매긴 데이터라, 시군구가 아니라 건물 반경 단위로 집계할 수 있다([공공데이터포털 설명](https://www.data.go.kr/data/15101797/openapi.do)).
 
 | 항목 | 내용 |
 | --- | --- |
-| 호출(실측 확인) | `safemap.go.kr/openapi2/IF_0087_WMS`(공식, `serviceKey` 필요)는 `GetMap`만 허용하고 `GetFeatureInfo`는 서버에서 차단한다(실측: 모든 대소문자 조합에서 400). 지도 화면이 내부적으로 쓰는 `www.safemap.go.kr/geoserver_pos/safemap/wms`(GeoServer 직결, 인증 불필요)로 `GetFeatureInfo`를 호출한다. 레이어 `A2SM_CRMNLHSPOT_TOT`, 스타일 `A2SM_CrmnlHspot_Tot_Tot`, 응답은 GeoJSON. 지도 타일 표시(`layers` 앱의 WMS 프록시, `GetMap`)는 공식 엔드포인트+`serviceKey`를 그대로 쓴다 |
-| 비공식 엔드포인트 주의 | `geoserver_pos` 경로는 공식 문서에 없는 내부 경로라 공지 없이 바뀌거나 막힐 수 있다. 실패 시 공식 API(GetMap만)나 safetydata.go.kr CSV 배포본 등 대안을 다시 검토한다 |
-| 응답 속성 | `OBJT_ID`, `TY_CD`(10201000 = 전체, 실측 확인: 정수가 아니라 `10201000.0` 실수로 온다 — 문자열 비교 금지, `int(float(value))`로 비교), `GRAD`, `CTPRVN_CD`, `SGG_CD`. `TY_NM`은 인코딩이 깨져 오므로 쓰지 않고 `TY_CD`로 판별 |
-| 지오메트리(실측 확인) | `MultiPolygon`(밀도분석 구역 폴리곤) — 도로 선이 아니다. 길이가 아니라 면적으로 지표를 낸다(8-5) |
+| 호출 | WMS `safemap.go.kr/openapi2/IF_0087_WMS`, 레이어 `A2SM_CRMNLHSPOT_TOT`, 스타일 `A2SM_CrmnlHspot_Tot_Tot`, `GetFeatureInfo`(GeoJSON 응답). 단, 공식 게이트웨이(openapi2, serviceKey 필요)는 GetMap만 허용하고 GetFeatureInfo는 막혀 있어(실측 400), 수집은 지도 화면이 쓰는 내부 GeoServer www.safemap.go.kr/geoserver\_pos/safemap/wms(인증 불필요, SRS EPSG:900913=3857)로 한다. 비공식 경로라 공지 없이 바뀌거나 막힐 수 있으므로 호출을 적게·천천히 한다. 지도 레이어 표시는 공식 GetMap을 쓴다 |
+| 응답 속성 | `OBJT_ID`, `TY_CD`(10201000 = 전체), `GRAD`, `CTPRVN_CD`, `SGG_CD`. `TY_CD는 10201000.0처럼 실수로 오므로 int(float(값))로 비교한다. TY_NM`은 인코딩이 깨져 오므로 쓰지 않고 `TY_CD`로 판별 |
 | 데이터 기간·갱신 | 최근 1년 분(공공데이터포털 표기 2023년 7월–2024년 6월), 연 1회 갱신 → `safety_sync` 연 1회와 맞음 |
 | 제공 형식 제약 | WMS만 제공(그리드 XML은 준비 중) → 전체 다운로드가 없어 배치에서 구역 단위 GetFeatureInfo로 수집(8-4) |
 
 ### 8-4. 범죄주의구간 수집
 
-1. 대전 경계를 2km × 2km 구역으로 나눈다(수집할 때만 쓰는 임시 구역).
+1. 먼저 probe\_crime\_feature\_cap 명령으로 서버의 실제 결과 상한을 재서 .env의 CRIME\_FEATURE\_CAP에 넣는다(값이 없으면 수집을 시작하지 않는다). 그다음 대전 경계를 2km × 2km 구역으로 나눈다(수집할 때만 쓰는 임시 구역).
 2. 구역마다 `GetFeatureInfo`를 한 번 호출한다. `BBOX`는 구역, 조회 지점은 구역 중앙, 픽셀 버퍼는 구역 전체를 덮는 크기, `FEATURE_COUNT`는 크게, 응답은 GeoJSON으로 받는다.
-3. 반환된 피처 수가 `FEATURE_COUNT` 상한과 같으면 잘렸을 수 있으므로, 그 구역을 4등분해 다시 호출한다(최소 250m까지). 서버에 픽셀 버퍼 상한이 있으면 구역 크기를 그에 맞춰 줄인다.
-4. 구역 경계에 걸친 구역 폴리곤은 여러 번 오므로 `OBJT_ID`로 중복 제거해 `crime_segment(objt_id, grad, data_period, geom MultiPolygon 4326)`에 저장한다.
+3. 반환된 피처 수가 `FEATURE_COUNT` 또는 CRIME\_FEATURE\_CAP 중 작은 값 이상이면 잘렸을 수 있으므로(서버에 숨은 상한이 있을 수 있다), 그 구역을 4등분해 다시 호출한다(최소 250m까지). 서버에 픽셀 버퍼 상한이 있으면 구역 크기를 그에 맞춰 줄인다.
+4. 구역 경계에 걸친 구간은 여러 번 오므로 `OBJT_ID`로 중복 제거해 `crime_segment(objt_id, grad, data_period, geom MultiPolygon 4326)`에 저장한다.
 5. 진행 상황을 구역 단위로 `crime_fetch_progress(cell_id, status, feature_count, fetched_at)`에 기록해, 중간에 끊기면 미완료 구역부터 이어서 돌린다.
 6. 요청 사이에 1–2초 간격을 두고, 429·503·타임아웃은 1·5·25분 간격으로 최대 3회 재시도한다. 그래도 실패한 구역은 `failed`로 남겨 다음 실행에서 다시 시도한다.
 7. 호출량은 구역 수와 분할 호출을 합쳤 수백 회 수준이다.
 
 ### 8-5. 건물 범죄 지표
 
-`GRAD` 하나로 ‘주변 범죄 수준’을 판단하되, 반경 안에 등급이 다른 구역 폴리곤이 여럿 있으므로 대표값 규칙을 정해 둔다. 지표는 조회 시 반경과 겹치는 `crime_segment` 구역 폴리곤으로 계산하고, 면적은 `ST_Area(ST_Intersection(geom, 반경)::geography)`로 구한다. GEOS 3.9.0(OverlayNG)이 한쪽이 다른 쪽에 완전히 포함되는 경우 `ST_Intersection`을 빈 지오메트리로 돌리는 버그가 있어, `ST_Intersection`의 3번째 인자로 gridSize(`0.0000001`, 약 1cm)를 줘서 우회한다(실측 확인됨).
+`GRAD` 하나로 ‘주변 범죄 수준’을 판단하되, 반경 안에 등급이 다른 밀도 구역이 여럿 있으므로 대표값 규칙을 정해 둔다. 지표는 조회 시 반경과 겹치는 `crime_segment` 밀도 구역으로 계산하고, 면적은 `ST_Area(ST_Intersection(geom, 반경, 1e-7)::geography)`(세 번째 인자 gridSize는 GEOS 3.9의 포함 관계 교차 버그 회피용)로 구한다.
 
 | 지표 | 정의 | 쓰임 |
 | --- | --- | --- |
 | `crime.max_grad` | 반경과 겹치는 구역의 `GRAD` 최댓값 | ‘주변에서 가장 높은 등급’ |
 | `crime.near_grad` | 건물에서 50m 이내 구역의 최고 등급 | 건물 바로 앞 수준 |
-| `crime.flagged_area_m2` | 반경 안 주의구역의 총 면적(㎡) | 주의구역이 얼마나 넓게 퍼져 있는지 |
-| `crime.high_share_pct` | 반경 안 주의구역 면적 중 고등급(`GRAD` ≥ 8) 구역 면적의 비율 | 고등급 구역의 비중 |
+| `crime.flagged_area_m2` | 반경 안 주의구역의 총 면적(㎡) | 주의구간이 얼마나 넓게 퍼져 있는지 |
+| `crime.high_share_pct` | 반경 안 주의구역 면적 중 고등급(`GRAD` ≥ 8) 구역 면적의 비율 | 고등급 구간의 비중 |
 
 주의구간이 없는 곳은 ‘안전’이 아니라 ‘주의구간 미지정’으로 표현하고, 리포트에는 데이터 기간(최근 1년)을 함께 적는다. 확인 결과와 운영 규칙은 다음과 같다.
 
 - **등급 방향(확인됨)**: 범례는 1등급 연노랑(#ffffb2)에서 10등급 진적색(#bd0026)으로, 높을수록 최근 1년 범죄 발생 밀도가 높았던 구간이다. 제공처는 ‘등급이 높은 지역이 현재 위험하다는 의미는 아니다’라고 고지하므로, 화면·리포트에서 ‘위험’ 표현을 쓰지 않고 이 고지를 함께 표시한다.
 - **고등급 기준**: 범례의 적색 계열인 8–10등급을 고등급으로 둔다(7등급부터 아래는 주황·노랑 계열).
-- **응답·좌표계(확인됨)**: GetFeatureInfo 응답에 구역 폴리곤 geometry가 포함되고, WMS는 EPSG:3857 요청을 지원한다.
+- **응답·좌표계(확인됨)**: GetFeatureInfo 응답에 밀도 구역 geometry가 포함되고, WMS는 EPSG:3857 요청을 지원한다.
 - **이용 조건(확인됨)**: 지도 표시와 집계 모두 사용할 수 있다. 레이어에는 고지(`WARN`)와 출처를 함께 표시한다.
 - **데이터 기간**: 수집할 때 확인한 실제 기간을 `data_period`에 기록해 화면·리포트에 표시한다.
 - **범위**: 교통·화재 등 다른 안전 레이어는 MVP에서 제외하며, 추가할 때도 같은 수집 방식을 쓴다.
@@ -613,9 +633,9 @@ A0, A6·A7(특수지, PNU에 포함), A10, A19, A21, A23, A28은 적재하지 �
 | 항목 | 규칙 |
 | --- | --- |
 | 사용자 인증 | 이메일·비밀번호 회원가입, DRF + JWT(SimpleJWT). 액세스 토큰 30분, 리프레시 토큰 14일(초기값) |
-| 비로그인 API | 검색·건물 조회·`insight`·레이어. IP당 분당 60회(`insight`)·30회(`search`), DRF throttling + Redis |
+| 비로그인 API | 검색·건물 조회·`insight`·레이어. IP당 분당 60회(`insight`)·30회(`search`), DRF throttling + Redis. DRF 기본 권한은 IsAuthenticated이고, 공개 API만 명시적으로 AllowAny로 연다 |
 | 로그인 API | 리포트·즐겨찾기·메모·`/api/me/*`. 모든 조회·수정·삭제에 소유자 검사, 리포트 생성은 사용자별 하루 20건 |
-| 관리자 API | 관리자 권한 + 허용 IP 목록 |
+| 관리자 API | MVP는 관리 명령(CLI)과 Django 관리자 화면(is\_staff)으로 대체. 웹 관리자 API와 IP 허용 목록은 만들지 않는다 |
 | 비밀 값 | CDSE S3 키, 공공데이터포털·생활안전지도 키, JWT 서명 키는 `.env`(저장소 제외)로만 주입 |
 | CORS | 프론트 도메인만 허용 |
 | 출처 표기 | 위성 레이어에 ‘Contains modified Copernicus Sentinel data \[연도\]’, 배경지도에 ‘© OpenStreetMap contributors’. OSM 공식 타일 서버는 대량 사용을 제한하므로 공개 운영 전에 타일 제공 업체나 자체 타일 서버로 바꾼다 |
@@ -643,7 +663,7 @@ A0, A6·A7(특수지, PNU에 포함), A10, A19, A21, A23, A28은 적재하지 �
 | --- | --- |
 | `api` | Django + DRF(gunicorn) |
 | `beat` | Celery Beat, 단일 인스턴스만 실행 |
-| `worker-io`, `worker-cpu`, `worker-gpu` | 큐별 Celery 워커(`worker-gpu`는 LLM 서버(Ollama/vLLM)를 호출만 하므로 GPU 불필요) |
+| `worker-io`, `worker-cpu`, `worker-gpu` | 큐별 Celery 워커(`worker-gpu`는 vLLM을 호출만 하므로 GPU 불필요) |
 | `db` | PostgreSQL + PostGIS, 매일 `pg_dump` 백업 |
 | `redis` | 큐 브로커·캐시·잠금 |
 | `titiler` | COG 타일 서버, COG 아카이브 볼륨 읽기 전용 마운트 |
@@ -704,7 +724,7 @@ A0, A6·A7(특수지, PNU에 포함), A10, A19, A21, A23, A28은 적재하지 �
 | 캐시 | 디스크 타일 캐시, TTL 30일(원천 데이터가 연 1회 갱신). `safety_sync` 때 비움 |
 | 장애 시 | 원천 오류면 투명 타일을 반환하고 레이어에 ‘일시적으로 불러올 수 없음’ 표시 |
 
-레이어 표시와 별도로, 리포트용 범죄 지표(8-5)는 같은 데이터를 GetFeatureInfo로 수집한 밀도 구역 폴리곤(`crime_segment`)으로 집계한다.
+레이어 표시와 별도로, 리포트용 범죄 지표(8-5)는 같은 데이터를 GetFeatureInfo로 수집한 밀도 구역(`crime_segment`)으로 집계한다.
 
 ### 10-4. 내 표시 건물 스타일
 
@@ -721,3 +741,46 @@ A0, A6·A7(특수지, PNU에 포함), A10, A19, A21, A23, A28은 적재하지 �
 | 폴더 숨김 | 그 폴더와 하위 폴더의 건물을 지도에서 숨김(목록에는 남음), is\_hidden으로 저장해 기기 간 유지 |
 
 색상 팔레트 8색과 아이콘·배지의 실제 모양은 이후 UI 설계에서 확정한다.
+
+## 11. 다지역 확장 구조
+
+지금은 대전만 서비스하지만, 다른 시도를 ‘추가’(동시 서비스)할 수 있게 지역을 데이터로 관리한다. 시도 코드는 사람이 입력하지 않고 전국 법정구역 파일(`AL_D001_00_*.zip`)에서 읽는다.
+
+### 11-1. 서비스 지역(`service_area`)
+
+| 컬럼 | 내용 |
+| --- | --- |
+| `sido_code`(PK) | 시도 코드. 법정구역 SIG 레이어 A1의 앞 2자리 |
+| `name` | 시도 이름. A2의 첫 단어 |
+| `enabled` | 정기 배치 대상 여부. 추가 직후에는 false, 경계·건물 적재가 끝나면 sync가 true로 바꾼다 |
+| `grid`, `bbox` | 위성 격자(EPSG:32652, 10m)와 검색 범위(EPSG:4326). 지역을 추가할 때 한 번 계산해 저장하고 이후 다시 계산하지 않는다 |
+
+격자 계산 규칙: 시도 경계를 32652로 변환 → 범위에 500m 여유 → 60m 배수로 바깥 스냅해 `grid` 저장 → 그 범위를 4326으로 되돌려 `bbox` 저장. 위성 결과가 쌓인 뒤 격자가 바뀌면 계절 간 픽셀이 어긋나므로 자동 재계산은 하지 않는다.
+
+### 11-2. 지역별로 나뉜 데이터
+
+| 대상 | 지역 구분 방법 |
+| --- | --- |
+| `building` | `bjd_code` 앞 2자리. 소프트 삭제는 같은 시도 안에서만 하고, 파일의 지역과 지정한 지역이 다르면 적재를 거부한다 |
+| `raster_product` | `region_code` 컨럼(재계산 키·COG 경로에 포함). 합성 결과는 시도 경계 밖을 nodata로 잘라 이웃 지역 COG와 겹치지 않게 한다(반경 통계 이중 계산 방지) |
+| `satellite_scene` | `(scene_id, region_code)` 유일. 같은 장면도 지역별로 따로 COG를 만든다 |
+| `crime_fetch_progress` | `(cell_id, region_code)` 유일 |
+| `crime_segment` | 지역 컨럼 없음(전국 공유). 정리는 시도 경계 폴리곤 안이면서 이번 실행에서 받지 않은 구간만 |
+| `trade`, `region_stat` | 각각 `sgg_code`, `region_code`로 이미 구분됨 |
+| 잠금·`index_run` | 시도 코드 기반 키(예: `30`, `30:2026:summer`) |
+
+### 11-3. 지역 추가 절차(`areas` 명령)
+
+- **대화형 메뉴**: `./scripts/areas.sh`(PowerShell은 `areas.ps1`). 사용 중인 지역의 단계별 ✓/✗와 추가 가능한 지역 목록을 보여주고, 번호를 고르면 등록 → `sync --dry-run` 결과 → ‘지금 실행 / 백그라운드 / 취소’ 순서로 진행한다.
+- **하위 명령**: `list`, `status`, `available`, `add`, `enable`, `disable`, `sync [--area 코드] [--dry-run] [--background]`, `logs 코드`.
+- **sync 단계**: 경계 → 건물 → 실거래(24개월) → 위성(13계절) → 범죄. 완료 여부는 실제 데이터로 판단하고, 끝난 단계·달·계절은 건너뛴다. 파일·키·설정이 없으면 안내 후 그 단계만 skipped로 두고, 한 단계가 실패해도 다음 단계를 진행한다. 건물이 없으면 실거래도 건너뛴다(거래 위치가 건물 중심점이므로).
+- **사람이 직접 받는 파일**: 그 지역의 건물 파일(`AL_D010_{시도}_*.zip`)뿐이다. 경계는 전국 법정구역 파일 하나로 해결된다.
+
+### 11-4. 정기 배치
+
+실거래·위성 수집·계절 합성·범죄 동기화는 디스패처 태스크가 `enabled`이면서 경계·격자가 준비된 지역을 돌며 지역별로 실행한다. 준비되지 않은 지역은 경고만 남기고 건너뛴다. 등록 명령은 `seed_trade_schedule`, `seed_collect_schedule`, `seed_season_schedule`, `seed_safety_schedule`, `seed_cleanup_schedule`이다.
+
+### 11-5. 남은 한계
+
+- 지도 레이어(녹지 마스크·트루컬러)는 지역 하나의 COG만 가리킨다. 지역이 둘 이상이면 지역별 레이어나 모자이크가 필요하다(프론트 단계에서 처리).
+- 위성 격자는 UTM 52존(EPSG:32652) 기준이라, 동경 126° 서쪽(백령도, 신안 섬 등)은 거리 왜곡이 커진다. 내륙은 문제없다.

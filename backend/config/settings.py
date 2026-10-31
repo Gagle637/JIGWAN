@@ -214,6 +214,12 @@ LLM_MODEL = env("LLM_MODEL", default="")
 LLM_TIMEOUT_SECONDS = env.int("LLM_TIMEOUT_SECONDS", default=480)
 TITILER_BASE_URL = env("TITILER_BASE_URL", default="")
 
+# STAC 검색의 eo:cloud_cover 상한. 장면 메타데이터의 구름양은 타일 전체(약 110km) 기준이라
+# 대전 위가 맑아도 다른 데가 흐리면 걸러질 수 있다 — 실제 구름 화소 제외는 장면 안에서 SCL로
+# 픽셀 단위로 하고(2-3), 대전 안 유효 화소 20% 미만인 장면만 따로 excluded로 뺀다. 그래서
+# 이 값은 너그럽게 두고 품질은 SCL·유효 비율·최소 관측 수(MIN_OBSERVATIONS)에 맡긴다.
+SATELLITE_MAX_CLOUD_PCT = env.int("SATELLITE_MAX_CLOUD_PCT", default=70)
+
 # --- 생활안전지도 범죄주의구간(9단계) ---
 # GetFeatureInfo의 숨은 FEATURE_COUNT 서버 상한. probe_crime_feature_cap으로 확인해 넣기
 # 전에는 비워 두고, run_safety_sync는 이 값이 없으면 시작 전에 멈춘다(사용자 결정).

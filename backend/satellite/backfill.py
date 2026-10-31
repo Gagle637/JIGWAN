@@ -2,6 +2,8 @@
 import logging
 from datetime import date
 
+from django.conf import settings
+
 from core.areas import get_bbox
 
 from .collect import collect_scenes
@@ -72,7 +74,9 @@ def dry_run_list_scenes(seasons: list[tuple[int, str]], sido_code: str) -> dict:
 
     for year, season in seasons:
         start, end = parse_season(f"{year}-{season}")
-        items = dedupe_latest_baseline(search_scenes(start, end, bbox=bbox))
+        items = dedupe_latest_baseline(
+            search_scenes(start, end, bbox=bbox, max_cloud=settings.SATELLITE_MAX_CLOUD_PCT)
+        )
         season_new = 0
         for item in items:
             if item.id in existing_ids:

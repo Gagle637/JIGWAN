@@ -3,11 +3,14 @@ import pytest
 import rasterio
 from django.contrib.gis.geos import MultiPolygon
 from django.contrib.gis.geos import Polygon as GEOSPolygon
+from django.utils import timezone
 
 from buildings.models import Region
 from satellite.cog import grid_transform
 from satellite.composite import (
     GREEN_NDVI_THRESHOLD,
+    _check_scene_files_or_flag_for_recollection,
+    _dedupe_scenes_by_cog_path,
     build_season_composite,
     compute_ndbi,
     compute_ndvi,
@@ -171,3 +174,113 @@ def test_build_season_composite_clips_to_sido_boundary_to_avoid_double_counting_
     b_at_a_side = _pixel_value(result_b["paths"]["green_mask"], grid_b, 341880, 4004870, resolution_m)
     assert a_at_a_side != MASK_NODATA
     assert b_at_a_side == MASK_NODATA
+
+
+# ---- 버그1: 2타일 병합이 공유하는 cog_path를 관측 수 집계에서 중복으로 세면 안 된다 ----
+
+
+def test_dedupe_scenes_by_cog_path_keeps_one_representative_per_file():
+    scenes = [
+        SatelliteScene(scene_id="A", cog_path="/x.tif", scl_cog_path="/x_scl.tif"),
+        SatelliteScene(scene_id="B", cog_path="/x.tif", scl_cog_path="/x_scl.tif"),  # A와 공유
+        SatelliteScene(scene_id="C", cog_path="/y.tif", scl_cog_path="/y_scl.tif"),
+    ]
+
+    deduped = _dedupe_scenes_by_cog_path(scenes)
+
+    assert [s.scene_id for s in deduped] == ["A", "C"]
+
+
+@pytest.mark.django_db
+def test_build_season_composite_dedupes_shared_cog_path_so_observations_are_not_double_counted(
+    tmp_path,
+):
+    """같은 cog_path를 공유하는 두 장면(2타일 병합, scene_id만 다름)을 별도 파일의 세 번째
+    장면과 합쳐도 실제 고유 관측 수는 2개뿐이어야 한다 — MIN_OBSERVATIONS=3 미달로 전부
+    nodata가 나와야 정상이다. 수정 전처럼 공유 파일을 열 때마다 새로 세면 관측 수가 3으로
+    둔갑해(사실은 같은 파일을 두 번 읽은 것) 미달 기준을 통과해버린다."""
+    resolution_m = 10
+    minx, miny, maxx, maxy = 341700, 4004820, 341900, 4004920
+    _sido_region("95", minx, miny, maxx, maxy)
+    grid = {
+        "crs": "EPSG:32652", "resolution_m": resolution_m,
+        "minx": minx, "miny": miny, "maxx": maxx, "maxy": maxy,
+        "width": round((maxx - minx) / resolution_m),
+        "height": round((maxy - miny) / resolution_m),
+    }
+
+    shared_refl, shared_scl = _write_reflectance_and_scl(tmp_path, "shared", grid)
+    other_refl, other_scl = _write_reflectance_and_scl(tmp_path, "other", grid)
+
+    scenes = [
+        SatelliteScene(scene_id="TILE_A", cog_path=shared_refl, scl_cog_path=shared_scl),
+        SatelliteScene(scene_id="TILE_B", cog_path=shared_refl, scl_cog_path=shared_scl),
+        SatelliteScene(scene_id="OTHER", cog_path=other_refl, scl_cog_path=other_scl),
+    ]
+
+    result = build_season_composite(scenes, 2026, "summer", grid, sido_code="95")
+
+    assert result["valid_ratio"]["green_mask"] == 0.0
+    # scene_ids 기록(보존 정책 추적용)은 중복 제거 전 원본 전부를 그대로 유지한다.
+    assert result["scene_ids"] == ["TILE_A", "TILE_B", "OTHER"]
+
+
+# ---- 버그3: 파일이 지워진 ready 장면으로 합성을 시도하면 조용히 진행하지 않는다 ----
+
+
+@pytest.mark.django_db
+def test_check_scene_files_flags_missing_scene_as_listed_and_raises_with_recovery_command(
+    tmp_path,
+):
+    present_refl = tmp_path / "present_REFL.tif"
+    present_scl = tmp_path / "present_SCL.tif"
+    present_refl.write_bytes(b"x")
+    present_scl.write_bytes(b"x")
+
+    ok_scene = SatelliteScene.objects.create(
+        scene_id="OK1", region_code="30", sensed_at=timezone.now(), mgrs_tile="T52SCF",
+        cloud_pct=5.0, processing_baseline="N0512", status=SatelliteScene.Status.READY,
+        cog_path=str(present_refl), scl_cog_path=str(present_scl),
+    )
+    missing_scene = SatelliteScene.objects.create(
+        scene_id="MISSING1", region_code="30", sensed_at=timezone.now(), mgrs_tile="T52SCF",
+        cloud_pct=5.0, processing_baseline="N0512", status=SatelliteScene.Status.READY,
+        cog_path=str(tmp_path / "gone_REFL.tif"), scl_cog_path=str(tmp_path / "gone_SCL.tif"),
+    )
+
+    with pytest.raises(RuntimeError) as exc_info:
+        _check_scene_files_or_flag_for_recollection(
+            [ok_scene, missing_scene], 2026, "summer", "30"
+        )
+
+    message = str(exc_info.value)
+    assert "MISSING1" in message
+    assert "collect_scenes --season 2026-summer --sido 30" in message
+    assert "run_season_chain --season 2026-summer --sido 30" in message
+
+    missing_scene.refresh_from_db()
+    assert missing_scene.status == SatelliteScene.Status.LISTED
+    assert missing_scene.cog_path is None
+    assert missing_scene.scl_cog_path is None
+
+    ok_scene.refresh_from_db()
+    assert ok_scene.status == SatelliteScene.Status.READY
+    assert ok_scene.cog_path == str(present_refl)
+
+
+@pytest.mark.django_db
+def test_check_scene_files_does_nothing_when_all_files_present(tmp_path):
+    present_refl = tmp_path / "present_REFL.tif"
+    present_scl = tmp_path / "present_SCL.tif"
+    present_refl.write_bytes(b"x")
+    present_scl.write_bytes(b"x")
+    scene = SatelliteScene.objects.create(
+        scene_id="OK1", region_code="30", sensed_at=timezone.now(), mgrs_tile="T52SCF",
+        cloud_pct=5.0, processing_baseline="N0512", status=SatelliteScene.Status.READY,
+        cog_path=str(present_refl), scl_cog_path=str(present_scl),
+    )
+
+    _check_scene_files_or_flag_for_recollection([scene], 2026, "summer", "30")  # raise 안 함
+
+    scene.refresh_from_db()
+    assert scene.status == SatelliteScene.Status.READY

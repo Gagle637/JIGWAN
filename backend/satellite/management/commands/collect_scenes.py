@@ -56,3 +56,11 @@ class Command(BaseCommand):
                 f"기존 건 제외: {summary['skipped_existing']}"
             )
             self.stdout.write(f"    덮는 타일: {', '.join(summary['tiles']) or '없음'}")
+            affected = summary.get("superseded_affecting_published_seasons") or []
+            if affected:
+                self.stdout.write(
+                    self.style.WARNING(
+                        "    baseline 교체가 이미 게시된 계절에 영향을 줌(자동 재합성 안 "
+                        f"함, 수동으로 run_season_chain 재실행 필요): {', '.join(affected)}"
+                    )
+                )

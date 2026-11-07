@@ -5,6 +5,7 @@ from pathlib import Path
 import numpy as np
 import rasterio
 from django.conf import settings
+from django.utils import timezone
 from rasterio.enums import Resampling
 
 from .cdse_client import download_scene_files
@@ -111,6 +112,10 @@ def ingest_date_group(items_same_date: list, grid: dict, sido_code: str) -> list
                 "status": status,
                 "cog_path": str(cog_path),
                 "scl_cog_path": str(scl_cog_path),
+                # 실제로 받아 처리를 끝낸 시각(0007) — 이 함수가 호출되는 순간이 곧 수집
+                # 완료 시점이므로, 재수집(버그3 복구·baseline 교체 재수집 포함)될 때도
+                # 자연스럽게 최신으로 갱신된다.
+                "collected_at": timezone.now(),
             },
         )
         scenes.append(scene)

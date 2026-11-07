@@ -10,6 +10,10 @@ class SatelliteScene(models.Model):
         READY = "ready", "ready"
         EXCLUDED = "excluded", "excluded"  # 유효 화소 20% 미만(spec 2-3)
         FAILED = "failed", "failed"
+        # 같은 (타일, 촬영일)이 더 높은 processing_baseline으로 재수집돼 대체된 행(버그 수정,
+        # 0007). 합성 쿼리(status=ready)에서 자동으로 빠지고, COG 파일은 기간 조건 없이
+        # 다음 정리 때 지워진다(행은 유지).
+        SUPERSEDED = "superseded", "superseded"
 
     # 기본값을 일부러 안 둔다(다지역 지원 6단계, raster_product.region_code와 같은 이유).
     # scene_id는 더 이상 혼자 유일하지 않다 — 같은 MGRS 타일이 두 지역 모두에 걸치면
@@ -32,6 +36,10 @@ class SatelliteScene(models.Model):
     cog_path = models.CharField(max_length=255, null=True, blank=True)  # 반사율 5밴드(B02,B03,B04,B08,B11)
     scl_cog_path = models.CharField(max_length=255, null=True, blank=True)  # SCL 단일 밴드
     error = models.TextField(null=True, blank=True)
+    # 실제로 다운로드·처리를 마친 시각(0007) — sensed_at(촬영일)과 다르다. 백필로 몇 년 전
+    # 장면을 지금 받을 수도 있어 "수집 후 N일" 보관 규칙은 반드시 이걸 써야 한다. listed
+    # 행(아직 다운로드 전)은 null.
+    collected_at = models.DateTimeField(null=True, blank=True)
 
     class Meta:
         db_table = "satellite_scene"
@@ -81,6 +89,11 @@ class RasterProduct(models.Model):
     scene_ids = models.JSONField()
     valid_ratio = models.FloatField(null=True, blank=True)
     is_published = models.BooleanField(default=False)
+    # 이 합성이 실제로 완료된 시각(0008) — period_end(계절 달력상 끝)와 다르다. 몰아서
+    # 백필하면(예: 2023년 여름을 지금 합성) period_end는 몇 년 전인데 합성은 방금 끝난다 —
+    # 장면 COG "합성 후 90일" 보관 규칙은 반드시 이걸 써야 한다(실측 사고로 확인됨:
+    # period_end 기준으로 백필 직후 장면을 바로 지워버렸다).
+    composited_at = models.DateTimeField(null=True, blank=True)
 
     class Meta:
         db_table = "raster_product"

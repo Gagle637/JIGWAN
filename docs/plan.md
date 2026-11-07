@@ -78,17 +78,17 @@ MVP는 사용자 기능 여섯 가지(F1–F6)와 이를 받치는 위성 분석
 | 구분 | 데이터 항목 | 출처 / 수집 방식 | 연결 키 | 수집 주기(스케줄) |
 | --- | --- | --- | --- | --- |
 | 위성 | Sentinel-2 L2A(광학, 10–20m), Sentinel-1 GRD(SAR, 2단계) | CDSE STAC API 검색 → 대상 지역 범위만 COG로 잘라 아카이브 | 지역 범위, MGRS 타일 | 5일(재방문 주기)마다 신규 장면 수집, 계절 종료 후 합성 |
-| 건물 풋프린트 | 건물 폴리곤 175,270동 + 건축물대장 표제부 속성(용도·면적·사용승인일·층수 등) | 브이월드 GIS건물통합정보(AL\_D010) 대전 파일(EPSG:5186, CP949, 확보 완료 → PostGIS 적재 | PNU, 건물 ID | 분기 1회 |
-| 건축물대장 | 용도, 대지면적, 연면적, 건폐율, 용적률, 사용승인일, 세대수 | MVP는 GIS건물통합정보에 붙은 속성 사용. 세대수·총괄표제부가 필요하면 2단계에 세움터 파일 추가 | 시군구·법정동 코드 + 번·지 | 건물 파일과 함께 분기 1회 |
+| 건물 풋프린트 | 건물 폴리곤 175,270동 + 건축물대장 표제부 속성(용도·면적·사용승인일·층수 등) | 브이월드 GIS건물통합정보(AL\_D010) 대전 파일(EPSG:5186, CP949, 확보 완료 → PostGIS 적재 | PNU, 건물 ID | 새 파일을 받을 때(수동) |
+| 건축물대장 | 용도, 대지면적, 연면적, 건폐율, 용적률, 사용승인일, 세대수 | MVP는 GIS건물통합정보에 붙은 속성 사용. 세대수·총괄표제부가 필요하면 2단계에 세움터 파일 추가 | 시군구·법정동 코드 + 번·지 | 건물 파일과 함께(새 파일을 받을 때 수동) |
 | 실거래가 | 아파트·오피스텔·연립다세대·단독다가구 매매 및 전월세 | 공공데이터포털 국토부 실거래가 API | 시군구코드 + 계약월, 지번으로 PNU 매칭 | 일 1회(당월·전월 재수집) |
 | 생활안전 | 범죄주의구간(전체) 밀도 구역별 등급 GRAD(10단계, 경찰청 밀도분석) | 생활안전지도 WMS GetFeatureInfo(2km 구역 단위 호출 → 밀도 구역 geometry 저장) | 밀도 구역 geometry | 연 1회 |
-| 베이스맵·경계 | 배경지도, 시군구·법정동 경계 | OSM 타일(MVP), 브이월드 법정구역정보(AL\_D001: 시군구·읍면동 SHP, 시도는 시군구를 합쳐 생성, 법정동 코드 기준. SGIS 행정동 경계는 코드 체계가 달라 쓰지 않음) | 행정구역 코드 | 배경지도는 실시간 타일, 경계는 연 1회 적재 |
+| 베이스맵·경계 | 배경지도, 시군구·법정동 경계 | OSM 타일(일반 지도) + 항공사진 영상지도 API(브이월드 또는 국토지리정보원, 건물 확대용), 브이월드 법정구역정보(AL\_D001: 시군구·읍면동 SHP, 시도는 시군구를 합쳐 생성, 법정동 코드 기준. SGIS 행정동 경계는 코드 체계가 달라 쓰지 않음) | 행정구역 코드 | 배경지도는 실시간 타일, 경계는 연 1회 적재 |
 
 지역 뉴스(네이버 검색 API)는 추가개발로 보류해 MVP 데이터 소스에서 뺐다. 데이터 수집에서 정한 원칙은 세 가지다.
 
 - 위성은 STAC(pystac-client)로 검색하고 CDSE S3 키로 다운로드한다. 대전을 덮는 Sentinel-2 타일은 검색 결과의 타일 코드로 확인하고, 두 타일에 걸치면 같은 날짜 장면을 합쳐 쓴다.
 - 대량 데이터(건물 폴리곤과 건축물대장 속성, 행정경계)는 API 대신 파일로 받아 적재해 호출 한도 문제를 피한다. API는 실거래와 범죄주의구간에만 쓴다.
-- 범죄주의구간 GetFeatureInfo는 밀도 구역 geometry 포함, EPSG:3857 지원, 이용 조건을 확인했다(기술 명세 8-3). 공식 게이트웨이는 GetFeatureInfo를 막아둬서, 수집은 지도 화면이 쓰는 내부 GeoServer 주소로 한다(비공식 경로라 바뀌거나 막힐 수 있음). 배경지도는 MVP에서 OSM을 쓴다.
+- 범죄주의구간 GetFeatureInfo는 밀도 구역 geometry 포함, EPSG:3857 지원, 이용 조건을 확인했다(기술 명세 8-3). 공식 게이트웨이는 GetFeatureInfo를 막아둬서, 수집은 지도 화면이 쓰는 내부 GeoServer 주소로 한다(비공식 경로라 바뀌거나 막힐 수 있음). 배경지도는 일반 지도(OSM)와 건물 확대용 항공사진(영상지도 API)을 쓴다(기술 명세 10-5).
 
 ## 5. 분석 방법론: 사전 분석과 조회 시 계산
 
@@ -98,7 +98,7 @@ MVP는 사용자 기능 여섯 가지(F1–F6)와 이를 받치는 위성 분석
 
 | 잡 | 실행 시점 | 처리 내용 | 결과 |
 | --- | --- | --- | --- |
-| 위성 수집 | 5일마다 | STAC로 신규 L2A 장면 검색, 구름 30% 이하만 대전 범위로 잘라 COG 저장 | `satellite_scene`, 장면 COG |
+| 위성 수집 | 5일마다 | STAC로 신규 L2A 장면 검색, 장면 구름양 70% 이하(설정값)만 대전 범위로 잘라 COG 저장 | `satellite_scene`, 장면 COG |
 | 계절 합성 | 분기 1회(계절 종료 후) | SCL 마스킹 → 계절 중앙값 → NDVI·NDBI·녹지 마스크·트루컬러 | 결과 COG + 카탈로그 등록 |
 | 변화 분석 | 합성 직후 | 같은 계절 1·2·3년 전 대비 ΔNDBI·ΔNDVI → 변화 마스크와 변화 폴리곤 | 변화 COG + `change_area` + 카탈로그 등록 |
 | 지역 기준선 | 합성 직후 | 구·시 단위 평균 녹지율 | `region_stat` |
@@ -145,11 +145,11 @@ GIS건물통합정보에 붙은 건축물대장 속성에서 용도, 대지면�
 
 ### 5-6. 범죄 안전 진단 (F4)
 
-생활안전지도 범죄주의구간(전체)의 밀도 구역별 등급(GRAD, 10단계)을 연 1회 수집해 밀도 구역 geometry와 함께 저장해 두고, 조회 시 반경과 겹치는 구역으로 최고 등급·주의구역 면적·고등급 비중·건물 인접 등급을 구한다. 지도에는 같은 데이터를 WMS 레이어로 겹쳐 보여준다. 등급은 1(낮음)\~10(높음)이며, 높을수록 과거 발생 밀도가 높았다는 뜻일 뿐 현재 위험을 뜻하지 않으므로 ‘위험’ 표현은 쓰지 않는다. 주의구간이 없는 곳은 ‘주의구간 미지정’으로 표현하고 데이터 기간(최근 1년)을 함께 적는다. 교통·화재 등 다른 안전 지표는 MVP에서 제외한다.
+생활안전지도 범죄주의구간(전체)의 밀도 구역별 등급(GRAD, 10단계)을 연 1회 수집해 밀도 구역 geometry와 함께 저장해 두고, 조회 시 반경과 겹치는 구역으로 최고 등급·주의구역 면적·고등급 비중·건물 인접 등급을 구한다. 지도에는 같은 데이터를 WMS 레이어로 겹쳐 보여준다. 등급은 1(낮음)\~10(높음)이며, 높을수록 과거 발생 밀도가 높았다는 뜻일 뿐 현재 위험을 뜻하지 않으므로 ‘위험’ 표현은 쓰지 않는다. 주의구간이 없는 곳은 ‘주의구간 미지정’으로 표현하고 데이터 기간(원본 기준 기간)을 함께 적는다. 교통·화재 등 다른 안전 지표는 MVP에서 제외한다.
 
 ### 5-7. AI 입지 리포트 (F5, gpt-oss)
 
-리포트는 OpenAI의 오픈 웨이트 모델 gpt-oss를 자체 서버에서 돌려 만든다. gpt-oss-20b는 16GB 메모리 안에서, gpt-oss-120b는 80GB GPU 1장에서 돌아간다([gpt-oss](https://pypi.org/project/gpt-oss/)). vLLM으로 서빙하면 OpenAI 호환 API로 호출할 수 있다([vLLM 서빙 가이드](https://developers.openai.com/cookbook/articles/gpt-oss/run-vllm)).
+리포트는 OpenAI의 오픈 웨이트 모델 gpt-oss를 자체 서버에서 돌려 만든다. gpt-oss-20b는 16GB 메모리 안에서, gpt-oss-120b는 80GB GPU 1장에서 돌아간다([gpt-oss](https://pypi.org/project/gpt-oss/)). 기본은 로컬 Ollama로 돌리고, GPU 서버가 있으면 vLLM으로 서빙한다. 둘 다 OpenAI 호환 API로 호출한다([vLLM 서빙 가이드](https://developers.openai.com/cookbook/articles/gpt-oss/run-vllm)).
 
 - **생성 시점**: 사용자가 요청할 때만 만들고 사용자별로 저장한다. 건물을 조회해도 리포트는 자동으로 만들지 않는다.
 - **두 가지 형태**: 먼저 정해진 항목(3줄 요약, 실거주·투자 총평, 리스크)의 기본 템플릿 리포트를 제공하고, 사용자가 원하면 자기 프롬프트(질문·관점)를 더한 맞춤 리포트를 만든다.
@@ -164,21 +164,21 @@ GIS건물통합정보에 붙은 건축물대장 속성에서 용도, 대지면�
 
 &#91;embedded content: 시스템 아키텍처 · 조회 경로와 배치 경로\]
 
-지도 타일은 TiTiler가 COG 아카이브(로컬 볼륨 또는 S3 호환 스토리지)에서 바로 읽어 서빙한다. 리포트를 사용자 요청 시 만들기 때문에 gpt-oss 추론 서버는 상시 떠 있어야 한다. 생활안전지도 같은 외부 WMS 레이어는 API 서버가 인증키를 붙여 타일로 중계·캐시한다(기술 명세 10장).
+지도 타일은 TiTiler가 COG 아카이브(로컬 볼륨 또는 S3 호환 스토리지)에서 바로 읽어 서빙한다. 리포트를 사용자 요청 시 만들기 때문에 LLM 서버(기본은 로컬 Ollama, GPU가 있으면 vLLM)가 떠 있어야 한다. 생활안전지도 같은 외부 WMS 레이어는 API 서버가 인증키를 붙여 타일로 중계·캐시한다(기술 명세 10장).
 
 | 영역 | 기술 | 역할 |
 | --- | --- | --- |
 | Frontend | Vue 3 (Composition API), Pinia, Tailwind CSS | 화면, 상태 관리 |
 | 지도·차트 | OpenLayers, Chart.js | 건물 벡터 타일·클릭·버퍼·스와이프, 분석·안전 레이어, NDVI·실거래 차트 |
-| Backend | Python 3.11+, Django + DRF | REST API(결과 검색·반경 계산), 사용자 인증·리포트·즐겨찾기·메모, 레이어 중계, 관리자 API |
+| Backend | Python 3.11+, Django + DRF | REST API(결과 검색·반경 계산), 사용자 인증·리포트·즐겨찾기·메모, 레이어 중계, 관리 명령(CLI) |
 | 스케줄러 | Celery Beat | 잡 주기 실행(위성 5일, 실거래 일 1회, 합성 분기. 건물은 새 파일을 받을 때 수동 적재) |
 | 배치·비동기 처리 | Celery 워커 + Redis | 위성 분석 잡 실행·체이닝, 요청 시 리포트 생성 큐, 응답 캐시 |
 | Spatial DB | PostgreSQL + PostGIS | 건물 폴리곤, 결과 카탈로그(날짜·bbox), 변화 폴리곤, 실거래, 범죄주의 밀도 구역, 사용자 리포트·폴더·표시 |
 | Raster Engine | Rasterio, NumPy, GeoPandas, Shapely, pystac-client | STAC 검색·COG 생성·지수·변화 연산(배치), 반경 창 읽기·통계(조회) |
 | Tile Server | TiTiler (Docker, FastAPI) | 결과 COG 타일(녹지 마스크, Before/After) |
-| LLM | gpt-oss-20b (vLLM, OpenAI 호환 API) | 사용자 요청 시 리포트 생성, 120b는 품질 비교용 |
+| LLM | gpt-oss-20b (로컬 Ollama 기본, GPU가 있으면 vLLM, OpenAI 호환 API) | 사용자 요청 시 리포트 생성, 120b는 품질 비교용 |
 | 수집 | httpx | 공공 API 비동기 배치 호출 |
-| 인프라 | Docker Compose, GPU 노드 1대 | API·워커·DB·Redis·TiTiler 컨테이너 + vLLM 상시 기동 |
+| 인프라 | Docker Compose + 로컬 Ollama(GPU 노드는 선택) | API·워커·DB·Redis·TiTiler 컨테이너, LLM은 호스트의 Ollama(vLLM은 선택) |
 
 뉴스 수집(네이버 검색 API)은 추가개발로 보류했다. 붙일 때는 공공데이터 동기화와 같은 배치 잡으로 추가하고 리포트 입력에 뉴스 제목을 더한다.
 
@@ -211,7 +211,7 @@ GIS건물통합정보에 붙은 건축물대장 속성에서 용도, 대지면�
 | GET | `/api/me/buildings?bbox=`&folder\_id= | 내가 표시한 건물(지도 레이어용) | GeoJSON(폴리곤, 즐겨찾기, 색상, 라벨) |
 | GET | `/api/products?type=&from=&to=&bbox=` | 결과 카탈로그 검색(보류: 프론트에서 필요할 때 추가) | 결과 목록(종류, 기간, bbox, 타일 주소) |
 | GET | `/api/layers`, `/api/layers/{id}/tiles/{z}/{x}/{y}.png` | 레이어 목록, 외부 WMS 중계 | 레이어 설정, PNG 타일 |
-| GET | `/tiles/{z}/{x}/{y}?url=` | TiTiler 다이내믹 타일(녹지 마스크, Before/After) | PNG 타일 |
+| GET | `{TITILER_PUBLIC_URL}/cog/tiles/WebMercatorQuad/{z}/{x}/{y}.png?url=` | TiTiler 다이내믹 타일(녹지 마스크, Before/After) | PNG 타일 |
 | GET, POST | `/api/admin/index-runs` | 배치 실행 이력·수동 재실행(보류: 관리 명령과 Django 관리자 화면으로 대체) | 잡·지역·상태, `run_id` |
 | GET, POST | `/api/me/favorites` | 내 즐겨찾기 폴더 트리 조회·폴더 생성 | 폴더 트리 JSON, 새 폴더 id |
 | PATCH, DELETE | `/api/me/favorites/{folder_id}` | 이름·색상·숨김 변경, 다른 폴더로 이동·순서 변경, 삭제 | 변경된 폴더 |
@@ -221,14 +221,15 @@ GIS건물통합정보에 붙은 건축물대장 속성에서 용도, 대지면�
 
 | 테이블 | 주요 컬럼 | 채우는 곳 |
 | --- | --- | --- |
-| `building` | id, gis\_bldg\_id, pnu, bjd\_code, jibun, name, dong\_name, use\_name, structure, building\_area\_m2, total\_floor\_area\_m2, land\_area\_m2, approval\_date, height\_m, bcr\_pct, far\_pct, floors\_above, floors\_below, source\_date, geom(Polygon, 4326) | 건물 적재(분기) |
-| `satellite_scene` | scene\_id, sensed\_at, mgrs\_tile, cloud\_pct, processing\_baseline, cog\_path | 위성 수집 |
-| `raster_product` | id, product\_type(ndvi·ndbi·green\_mask·truecolor·change\_mask), period\_start, period\_end, season, compare\_period(변화만), bbox(Polygon, 4326), crs, resolution\_m, cog\_path, algo\_version, scene\_ids, is\_published | 계절 합성·변화 분석 |
+| `building` | id, building\_key(고정 키), gis\_bldg\_id, pnu, bjd\_code, jibun, name, dong\_name, use\_name, structure, building\_area\_m2, total\_floor\_area\_m2, land\_area\_m2, approval\_date, height\_m, bcr\_pct, far\_pct, floors\_above, floors\_below, source\_date, is\_active, geom(Polygon, 4326) | 건물 적재(새 파일을 받을 때 수동) |
+| `satellite_scene` | scene\_id, region\_code, sensed\_at, mgrs\_tile, cloud\_pct, processing\_baseline, status, cog\_path, scl\_cog\_path, 유일(scene\_id, region\_code) | 위성 수집 |
+| `raster_product` | id, region\_code, product\_type(ndvi·ndbi·green\_mask·truecolor·change\_mask), period\_start, period\_end, season, compare\_period(변화만), bbox(Polygon, 4326), crs, resolution\_m, cog\_path, algo\_version, scene\_ids, is\_published | 계절 합성·변화 분석 |
 | `change_area` | id, product\_id, period, area\_m2, delta\_ndbi, delta\_ndvi, geom(Polygon, 4326) | 변화 분석 |
 | `region_stat` | region\_code(→ region), product\_id, green\_ratio | 지역 기준선 |
 | `parcel_register` | MVP 제외. 세대수·총괄표제부가 필요해지면 세움터 파일로 추가(2단계) | 공공데이터 동기화 |
 | `trade` | id, sgg\_code, pnu, house\_type, deal\_type, deal\_ym, area\_m2, price, deposit, monthly\_rent, geom(Point, 4326) | 공공데이터 동기화 |
 | `crime_segment` | objt\_id, grad, data\_period, geom(MultiPolygon, 4326) | 범죄주의구간 수집 |
+| `crime_fetch_progress` | cell\_id, region\_code, status, feature\_count, fetched\_at, 유일(cell\_id, region\_code) | 범죄주의구간 수집(중단 후 이어하기) |
 | `map_layer` | 레이어 레지스트리(기술 명세 10-2) | 수동 등록, `safety_sync` |
 | `user` | accounts.User(AbstractUser 상속, email 고유·로그인 식별자), AUTH\_USER\_MODEL로 지정 | 회원가입 |
 | `user_building` | user\_id, building\_id, is\_favorite, folder\_id, color, label(20자 이내), memo, updated\_at, unique(user\_id, building\_id) | 즐겨찾기·메모 저장 |
@@ -265,7 +266,7 @@ MVP는 1인 개발 기준 9주로 잡고, 시범 지역인 대전광역시에서
 | 공공 API 호출 한도·장애 | 동기화 누락 | 야간 배치로 분산 호출, 실패 건 재시도 큐 |
 | gpt-oss 한국어 품질 | 어색한 문장, 용어 오류 | 한국어 few-shot 예시·용어 사전 고정, 20b↔120b 샘플 50건 비교 후 선택 |
 | LLM 환각·단정적 투자 조언 | 신뢰도·법적 리스크 | JSON 스키마 강제, 근거 키 검증(없는 키 인용 시 재생성), 권유·‘위험’ 문구 금지, 고지 문구 |
-| GPU 상시 기동·리포트 대기 | 비용, 동시 조회 시 리포트 지연 | 20b(16GB) 기본, 사용자별 일일 생성 한도, 생성 큐로 동시 요청 제한, 수치는 리포트와 무관하게 먼저 표시 |
+| LLM 서버 기동·리포트 대기 | 비용, 동시 조회 시 리포트 지연 | 로컬 Ollama 20b 기본(GPU 서버는 선택), 사용자별 일일 생성 한도, 생성 큐로 동시 요청 제한, 수치는 리포트와 무관하게 먼저 표시 |
 | 사용자 프롬프트 남용(규칙 우회, 범위 밖 질문) | 투자 권유·근거 없는 단정 출력 | 시스템 규칙이 사용자 프롬프트보다 우선, 프롬프트 500자 제한, 같은 검증기 통과 필수, 데이터에 없는 질문은 ‘제공 데이터로 답할 수 없음’으로 응답 |
 | 사용자 데이터 노출 | 다른 사용자의 리포트·메모가 보임 | 모든 사용자 데이터 API에 소유자 검사, 사용자별 지도 레이어는 본인 데이터만 반환 |
 

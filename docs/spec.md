@@ -14,10 +14,10 @@ Oct 16, 2026 · @준호
 | 위성 데이터 접근 방식 | STAC(pystac-client) 검색 + CDSE S3 다운로드(확정) | 수집 잡 구현, 저장 형식 |
 | 좌표계 | 저장 EPSG:4326, 표출 EPSG:3857(확정). 미터 계산은 geography 형변환(3-0) | 모든 벡터 적재와 공간 쿼리, 반경 계산 |
 | 계절 구간 | 봄 3–5월, 여름 6–8월, 가을 9–11월, 겨울 12–2월 | 합성 스케줄, 변화 감지 비교 쌍 |
-| 리포트 생성 방식 | 요청 시 사용자별 생성(기본 템플릿 → 맞춤 프롬프트), 건물당 여러 개 보관 | GPU 상시 기동, 사용자별 일일 한도 |
-| GPU 사양 | VRAM 24GB급 1장(20b 기본 + KV 캐시 여유) | 리포트 처리량, 인프라 비용 |
+| 리포트 생성 방식 | 요청 시 사용자별 생성(기본 템플릿 → 맞춤 프롬프트), 건물당 여러 개 보관 | LLM 서버 기동(기본 로컬 Ollama), 사용자별 일일 한도 |
+| GPU 사양 | 기본은 로컬 Ollama(20b, 메모리 16GB 이상 PC·맥). GPU 서버(VRAM 24GB급, vLLM)는 선택 | 리포트 처리량, 인프라 비용 |
 | 사용자 인증 | 지도·insight는 비로그인 허용, 리포트·즐겨찾기·메모는 로그인(JWT) 필요 | API 권한, 요청 제한 설계 |
-| 원본 장면 보관 기간 | 계절 합성 완료 후 90일 | 디스크 용량, 재합성 가능 여부 |
+| 원본 장면 보관 기간 | 계절 합성 완료 후 90일(제외된 장면은 수집 후 30일, 5-4) | 디스크 용량, 재합성 가능 여부 |
 
 ## 2. 위성 데이터 접근·전처리
 
@@ -27,8 +27,8 @@ CDSE의 Sentinel-2 L2A 원본은 COG가 아니라 SAFE 패키지 안의 JPEG 200
 
 | 단계 | 규칙 |
 | --- | --- |
-| 검색 | STAC `https://stac.dataspace.copernicus.eu/v1/`, 컬렉션 `sentinel-2-l2a`, 지역 bbox + 기간 + `eo:cloud_cover <= 30` ([STAC 문서](https://documentation.dataspace.copernicus.eu/APIs/STAC.html)) |
-| 중복 제거 | 같은 타일·촬영일에 여러 processing baseline이 있으면 최신 baseline 하나만 사용 |
+| 검색 | STAC `https://stac.dataspace.copernicus.eu/v1/`, 컬렉션 `sentinel-2-l2a`, 지역 bbox + 기간 + `eo:cloud_cover <= SATELLITE_MAX_CLOUD_PCT(기본 70). 장면 구름양은 타일 전체(약 110km) 기준이라, 실제 판단은 SCL 마스킹과 지역 내 유효 화소 20% 규칙에 맡긴다` ([STAC 문서](https://documentation.dataspace.copernicus.eu/APIs/STAC.html)) |
+| 중복 제거 | 같은 타일·촬영일에 여러 processing baseline이 있으면 최신 baseline 하나만 사용. 나중 실행에서 같은 장면이 새 baseline으로 재처리되어 올라오면(장면 ID가 다름) 기존 행과 비교해 최신 하나만 쓰고 예전 행은 superseded로 둔다. 합성은 (타일, 촬영일)당 하나만 쓴다 |
 | 다운로드 | CDSE S3(`eodata`) 접근 키로 필요한 파일만 받음: B02·B03·B04·B08(10m, B02·B03은 Before/After 트루컬러용), B11·SCL(20m), `MTD_MSIL2A.xml` |
 | 변환 | 대상 지역으로 자른 뒤 원본 좌표계(UTM 52N, EPSG:32652) 그대로 10m COG 저장. B11은 bilinear, SCL은 nearest로 10m 리샘플링 |
 | 정리 | 변환이 끝난 JP2 원본은 즉시 삭제, 변환 COG는 1장의 보관 기간을 따름 |
@@ -45,8 +45,8 @@ search = cat.search(
     collections=["sentinel-2-l2a"],
     bbox=[127.24, 36.18, 127.56, 36.50],   # 대전 대략 범위(경계 폴리곤으로 교체)
     datetime="2026-06-01/2026-08-31",
-    filter={"op": "<=", "args": [{"property": "eo:cloud_cover"}, 30]},
-    filter_lang="cql2-json",   # 실측 확인: CDSE는 cql2-text(문자열 식)를 거부하고 cql2-json(dict)만 받음
+    filter="eo:cloud_cover <= 70",
+    filter_lang="cql2-text",
 )
 items = list(search.items())
 tiles = {item.id.split("_")[5] for item in items}   # 예: {"T52SCF", ...}
@@ -85,6 +85,7 @@ os.environ["AWS_VIRTUAL_HOSTING"] = "FALSE"
 - `BOA_ADD_OFFSET`(밴드별)과 `BOA_QUANTIFICATION_VALUE`는 `MTD_MSIL2A.xml`에서 읽고, 값이 없는 구형 제품은 오프셋 0으로 처리한다.
 - DN 0은 nodata로 두고, 변환 후 음수 반사율은 0으로 자른다.
 - `satellite_scene`에 `processing_baseline`, 밴드별 오프셋을 함께 저장해 나중에 검증할 수 있게 한다.
+- 같은 날 두 타일에 걸친 장면은 행이 두 개지만 COG 하나를 함께 쓴다. 합성 입력은 `cog_path` 기준으로 중복을 없애, 그 날짜가 관측 2회로 세어져 최소 관측 수 판정과 중앙값이 틀어지지 않게 한다.
 - Sentinel-2A·B·C 장면은 구분 없이 같은 것으로 취급한다.
 
 ### 2-3. 구름 마스킹(SCL)
@@ -236,7 +237,7 @@ MVP는 대전 전역을 결과 하나로 저장하므로 기간당 보통 한 �
 | 대상 | 보관 기간 |
 | --- | --- |
 | JP2 원본 | 변환 직후 삭제 |
-| 장면별 COG | 해당 계절 합성 후 90일 |
+| 장면별 COG | 합성에 쓰인 장면은 그 장면을 쓴 합성 중 가장 최근의 합성 완료 시각(raster\_product.composited\_at) 기준 90일(계절 끝 날짜 period\_end는 기준으로 쓰지 않는다. 몰아서 백필하면 받자마자 지워진다), 제외(excluded)된 장면은 수집 시각(satellite\_scene.collected\_at) 기준 30일, 대체(superseded)된 장면은 다음 정리 때. 수동 정리는 기본이 미리보기(dry-run)이고 승인 후 실행한다. 파일만 지우고 행은 남긴다. 파일이 지워진 계절을 다시 합성하면 조용히 진행하지 않고 멈추거나 그 장면을 다시 받는다 |
 | 결과 COG, 변화 폴리곤, 카탈로그 | 영구(시계열 원천) |
 | `index_run` | 1년 |
 
@@ -263,7 +264,7 @@ MVP는 대전 전역을 결과 하나로 저장하므로 기간당 보통 한 �
   "status": "ready",
   "building": {"id": 18273, "pnu": "0000000000000000000", "name": "예시아파트 101동", "address": "○○시 ○○구 ○○동 123", "use_type": "공동주택", "geometry": {"type": "Polygon", "coordinates": []}},
   "radius_m": 500,
-  "as_of": {"satellite_period": "2026-06-01/2026-08-31", "trade_synced_at": "2026-10-16T04:12:00+09:00", "register_synced_at": "2026-10-01T05:40:00+09:00", "crime_data_period": "2023-07/2024-06"},
+  "as_of": {"satellite_period": "2026-06-01/2026-08-31", "trade_synced_at": "2026-10-16T04:12:00+09:00", "register_synced_at": "2026-10-01T05:40:00+09:00", "crime_data_period": "2025-01/2025-12"},
   "green": {
     "ratio_pct": 23.4, "region_avg_pct": 18.1, "diff_pp": 5.3, "coverage_pct": 92,
     "series": [{"year": 2023, "season": "summer", "ratio_pct": 22.0, "coverage_pct": 71}]
@@ -271,7 +272,7 @@ MVP는 대전 전역을 결과 하나로 저장하므로 기간당 보통 한 �
   "change": {
     "total_area_m2": 41200,
     "areas": [{"id": 551, "area_m2": 18300, "distance_m": 320, "period": "1y", "geometry": {"type": "Polygon", "coordinates": []}}],
-    "tiles": {"before": "/tiles/{z}/{x}/{y}?url=...", "after": "/tiles/{z}/{x}/{y}?url=..."}
+    "tiles": {"after": "http://localhost:8001/cog/tiles/WebMercatorQuad/{z}/{x}/{y}.png?url=/data/cog/30_2026_summer_truecolor.tif&bidx=1&bidx=2&bidx=3&rescale=0,3000", "before": {"1y": "http://localhost:8001/cog/tiles/WebMercatorQuad/{z}/{x}/{y}.png?url=..."}, "default_compare": "1y"}
   },
   "spec": {"use": "공동주택", "land_area_m2": 15230.5, "total_floor_area_m2": 48211.2, "bcr_pct": 18.2, "far_pct": 249.8, "approval_date": "2009-11-20", "age_years": 16},
   "trades": {"months": 24, "count": 87, "monthly": [{"ym": "2026-09", "deal_type": "sale", "median_price_per_m2": 812.3, "count": 5}]},
@@ -382,11 +383,11 @@ GET /api/me/favorites
 
 | 항목 | 값 |
 | --- | --- |
-| 서버 | 기본은 로컬 Ollama(GPU 서버 없이 무료, 모델 `gpt-oss:20b`), GPU가 있으면 vLLM 컨테이너(모델 `openai/gpt-oss-20b`, [서빙 가이드](https://developers.openai.com/cookbook/articles/gpt-oss/run-vllm))로 전환 가능. 둘 다 OpenAI 호환 `/v1/chat/completions`를 `LLM_BASE_URL`로 호출(사용자 결정) |
+| 서버 | OpenAI 호환 `/v1/chat/completions`. 기본은 로컬 Ollama(`gpt-oss:20b`, `http://host.docker.internal:11434/v1`)이고, NVIDIA GPU가 있으면 vLLM(`openai/gpt-oss-20b`)을 쓸 수 있다. 주소·모델은 `.env`의 `LLM_BASE_URL`, `LLM_MODEL`로 바꾼다. Ollama는 `:cloud`가 붙지 않은 로컬 모델만 쓴다 |
 | 추론 수준 | low(시스템 프롬프트에 지정). 품질이 부족하면 medium과 비교 |
-| 샘플링 | temperature 0.3, max\_tokens 4,000(실측 확인: gpt-oss가 "Reasoning: low"를 지시해도 reasoning 채널만으로 수천 토큰을 쓸 수 있어, 1,200으로는 reasoning만 다 쓰고 최종 JSON(content)이 비어 finish\_reason=length로 끊겼다. reasoning과 content가 토큰을 공유하므로 넉넉히 잡는다) |
-| 출력 강제 | 요청에 `response_format: {"type": "json_object"}`만 전달하고(vLLM의 완전한 json\_schema 구조화 출력은 Ollama가 지원하는지 확인할 수 없어 안 씀), 7-3(기본 템플릿)·7-6(맞춤)의 JSON 스키마는 응답을 저장하기 전에 `reports/validator.py`로 강제 검증 |
-| 동시성 | API가 gpu 큐에 넣고 워커가 LLM 서버(Ollama/vLLM)에 보냄. 동시 생성 수와 대기열 상한은 P3 벤치마크로 결정 |
+| 샘플링 | temperature 0.3, max\_tokens 4,000(아래 출력 강제 참고) |
+| 출력 강제 | `response_format`은 `json_object`(Ollama·vLLM 공통 지원)로 JSON만 받고, 7-3(기본 템플릿)·7-6(맞춤) 스키마 준수는 검증기(7-4)에서 확인한다. `max_tokens`는 4000: gpt-oss가 추론 토큰을 먼저 쓰기 때문에 1200이면 JSON이 비어서 끊기는 문제를 실측으로 확인했다 |
+| 동시성 | API가 gpu 큐에 넣고 워커가 LLM 서버(Ollama 또는 vLLM)에 보냄. 제한 시간은 `LLM_TIMEOUT_SECONDS`(기본 180초, 로컬 실행은 느릴 수 있음) |
 
 ### 7-2. 프롬프트 구성
 
@@ -478,7 +479,7 @@ Reasoning: low
 | --- | --- | --- | --- |
 | 실거래(8종: 4개 유형 × 매매·전월세) | API, 시군구 × 계약월 | 5개 구 × 8종 × 2개월 = 80회 + 페이지 | 5개 구 × 8종 × 24개월 = 960회 + 페이지 |
 | 건축물대장(표제부·총괄표제부) | GIS건물통합정보 속성 사용(세움터 파일은 2단계) | 없음 | 없음(파일 적재) |
-| 건물 폴리곤(GIS건물통합정보) | 파일 다운로드 | 없음(분기 1회 파일 적재) | 없음(파일 적재) |
+| 건물 폴리곤(GIS건물통합정보) | 파일 다운로드 | 없음(새 파일을 받을 때 수동 적재) | 없음(파일 적재) |
 | 범죄주의구간 GetFeatureInfo | API, 2km 구역(필요 시 4분할) | 없음(연 1회) | 수백 회 |
 
 실거래 API 호출은 공공데이터포털 개발계정 한도(API별 일 10,000회) 안에 들어온다. 건축물대장 속성은 GIS건물통합정보 파일에 포함돼 있어 별도 호출이 필요 없다(8-6).
@@ -491,7 +492,7 @@ Reasoning: low
 | --- | --- |
 | 호출 | WMS `safemap.go.kr/openapi2/IF_0087_WMS`, 레이어 `A2SM_CRMNLHSPOT_TOT`, 스타일 `A2SM_CrmnlHspot_Tot_Tot`, `GetFeatureInfo`(GeoJSON 응답). 단, 공식 게이트웨이(openapi2, serviceKey 필요)는 GetMap만 허용하고 GetFeatureInfo는 막혀 있어(실측 400), 수집은 지도 화면이 쓰는 내부 GeoServer www.safemap.go.kr/geoserver\_pos/safemap/wms(인증 불필요, SRS EPSG:900913=3857)로 한다. 비공식 경로라 공지 없이 바뀌거나 막힐 수 있으므로 호출을 적게·천천히 한다. 지도 레이어 표시는 공식 GetMap을 쓴다 |
 | 응답 속성 | `OBJT_ID`, `TY_CD`(10201000 = 전체), `GRAD`, `CTPRVN_CD`, `SGG_CD`. `TY_CD는 10201000.0처럼 실수로 오므로 int(float(값))로 비교한다. TY_NM`은 인코딩이 깨져 오므로 쓰지 않고 `TY_CD`로 판별 |
-| 데이터 기간·갱신 | 최근 1년 분(공공데이터포털 표기 2023년 7월–2024년 6월), 연 1회 갱신 → `safety_sync` 연 1회와 맞음 |
+| 데이터 기간·갱신 | 최근 1년 분. 실제 기간은 수집 시 원본 기준 기간을 확인해 .env의 CRIME\_DATA\_PERIOD에 적는다(현재 수집분 2025-01/2025-12). 원본이 갱신돼도 같은 데이터를 다시 받으며 기간만 바꾸지 않는다, 연 1회 갱신 → `safety_sync` 연 1회와 맞음 |
 | 제공 형식 제약 | WMS만 제공(그리드 XML은 준비 중) → 전체 다운로드가 없어 배치에서 구역 단위 GetFeatureInfo로 수집(8-4) |
 
 ### 8-4. 범죄주의구간 수집
@@ -502,7 +503,7 @@ Reasoning: low
 4. 구역 경계에 걸친 구간은 여러 번 오므로 `OBJT_ID`로 중복 제거해 `crime_segment(objt_id, grad, data_period, geom MultiPolygon 4326)`에 저장한다.
 5. 진행 상황을 구역 단위로 `crime_fetch_progress(cell_id, status, feature_count, fetched_at)`에 기록해, 중간에 끊기면 미완료 구역부터 이어서 돌린다.
 6. 요청 사이에 1–2초 간격을 두고, 429·503·타임아웃은 1·5·25분 간격으로 최대 3회 재시도한다. 그래도 실패한 구역은 `failed`로 남겨 다음 실행에서 다시 시도한다.
-7. 호출량은 구역 수와 분할 호출을 합쳤 수백 회 수준이다.
+7. 호출량은 구역 수와 분할 호출을 합쳐 수백 회 수준이다.
 
 ### 8-5. 건물 범죄 지표
 
@@ -515,7 +516,7 @@ Reasoning: low
 | `crime.flagged_area_m2` | 반경 안 주의구역의 총 면적(㎡) | 주의구간이 얼마나 넓게 퍼져 있는지 |
 | `crime.high_share_pct` | 반경 안 주의구역 면적 중 고등급(`GRAD` ≥ 8) 구역 면적의 비율 | 고등급 구간의 비중 |
 
-주의구간이 없는 곳은 ‘안전’이 아니라 ‘주의구간 미지정’으로 표현하고, 리포트에는 데이터 기간(최근 1년)을 함께 적는다. 확인 결과와 운영 규칙은 다음과 같다.
+주의구간이 없는 곳은 ‘안전’이 아니라 ‘주의구간 미지정’으로 표현하고, 리포트에는 데이터 기간(CRIME\_DATA\_PERIOD)을 함께 적는다. 확인 결과와 운영 규칙은 다음과 같다.
 
 - **등급 방향(확인됨)**: 범례는 1등급 연노랑(#ffffb2)에서 10등급 진적색(#bd0026)으로, 높을수록 최근 1년 범죄 발생 밀도가 높았던 구간이다. 제공처는 ‘등급이 높은 지역이 현재 위험하다는 의미는 아니다’라고 고지하므로, 화면·리포트에서 ‘위험’ 표현을 쓰지 않고 이 고지를 함께 표시한다.
 - **고등급 기준**: 범례의 적색 계열인 8–10등급을 고등급으로 둔다(7등급부터 아래는 주황·노랑 계열).
@@ -638,7 +639,7 @@ A0, A6·A7(특수지, PNU에 포함), A10, A19, A21, A23, A28은 적재하지 �
 | 관리자 API | MVP는 관리 명령(CLI)과 Django 관리자 화면(is\_staff)으로 대체. 웹 관리자 API와 IP 허용 목록은 만들지 않는다 |
 | 비밀 값 | CDSE S3 키, 공공데이터포털·생활안전지도 키, JWT 서명 키는 `.env`(저장소 제외)로만 주입 |
 | CORS | 프론트 도메인만 허용 |
-| 출처 표기 | 위성 레이어에 ‘Contains modified Copernicus Sentinel data \[연도\]’, 배경지도에 ‘© OpenStreetMap contributors’. OSM 공식 타일 서버는 대량 사용을 제한하므로 공개 운영 전에 타일 제공 업체나 자체 타일 서버로 바꾼다 |
+| 출처 표기 | 위성 레이어에 ‘Contains modified Copernicus Sentinel data \[연도\]’, 배경지도에 ‘© OpenStreetMap contributors’, 항공사진에 제공처(예: 국토지리정보원), 범죄주의구간에 생활안전지도와 고지 문구(10-5). OSM 공식 타일 서버는 대량 사용을 제한하므로 공개 운영 전에 타일 제공 업체나 자체 타일 서버로 바꾼다 |
 | 개인정보 | 회원가입 시 이메일만 수집하고 개인정보 처리방침·수집 동의를 받는다. 탈퇴 시 리포트·표시·폴더를 함께 삭제한다 |
 
 ### 9-2. 성능·캐시
@@ -653,7 +654,7 @@ A0, A6·A7(특수지, PNU에 포함), A10, A19, A21, A23, A28은 적재하지 �
 ### 9-3. 로깅·모니터링
 
 - 로그는 JSON 형식으로 남기고, API는 `request_id`, 배치는 `run_id`를 모든 줄에 포함한다.
-- MVP 모니터링은 Flower(Celery 작업 상태)와 관리자 API의 `index_run` 조회로 한다.
+- MVP 모니터링은 Flower(Celery 작업 상태)`, Django 관리자 화면의 index_run, areas status 명령`로 한다.
 - 추적 지표: API p90·5xx 비율, 잡별 소요 시간, 결과 카탈로그 커버리지, 리포트 생성 대기 시간, 디스크 사용량, GPU 사용률.
 - 알림 채널(슬랙 웹훅 또는 이메일)은 P0에서 정한다.
 
@@ -663,11 +664,11 @@ A0, A6·A7(특수지, PNU에 포함), A10, A19, A21, A23, A28은 적재하지 �
 | --- | --- |
 | `api` | Django + DRF(gunicorn) |
 | `beat` | Celery Beat, 단일 인스턴스만 실행 |
-| `worker-io`, `worker-cpu`, `worker-gpu` | 큐별 Celery 워커(`worker-gpu`는 vLLM을 호출만 하므로 GPU 불필요) |
+| `worker-io`, `worker-cpu`, `worker-gpu` | 큐별 Celery 워커(`worker-gpu`는 LLM 서버(Ollama 또는 vLLM)를 호출만 하므로 GPU 불필요) |
 | `db` | PostgreSQL + PostGIS, 매일 `pg_dump` 백업 |
 | `redis` | 큐 브로커·캐시·잠금 |
 | `titiler` | COG 타일 서버, COG 아카이브 볼륨 읽기 전용 마운트 |
-| `vllm` | gpt-oss 추론 서버, GPU 노드 |
+| `vllm` | 선택(compose profile, NVIDIA GPU가 있을 때). 기본은 호스트에서 도는 로컬 Ollama |
 
 ### 9-5. 테스트
 
@@ -688,13 +689,13 @@ A0, A6·A7(특수지, PNU에 포함), A10, A19, A21, A23, A28은 적재하지 �
 
 | 레이어 | 그룹 | 출처 | 형식 | 기본 표시 |
 | --- | --- | --- | --- | --- |
-| 배경지도 | 기본 | OpenStreetMap(MVP) | 래스터 타일 | 켜짐 |
+| 배경지도 | 기본 | OpenStreetMap(일반 지도) / 항공사진 영상지도 API(건물 확대, 줌 16 이상 기본, 10-5) | 래스터 타일 | 켜짐 |
 | 건물 풋프린트 | 기본 | 자체(PostGIS) | 벡터 타일 | 켜짐 |
 | 내 표시 건물(즐겨찾기·색상·라벨·메모) | 내 건물 | 자체(`user_building`), 로그인 사용자 본인 것만 | GeoJSON | 로그인 시 켜짐 |
 | 분석 반경(500m·1km) | 분석 | 자체 | GeoJSON | 건물 선택 시 |
-| 녹지 마스크 | 환경 | 자체 결과 COG → TiTiler | 래스터 타일 | 꺼짐 |
+| 녹지 마스크 | 환경 | 자체 결과 COG → TiTiler(줌 15 이하, 10m) | 래스터 타일 | 꺼짐 |
 | 개발 변화 구역 | 개발 | 자체(`change_area`) | GeoJSON | 꺼짐 |
-| Before/After 위성 영상 | 개발 | 자체 COG → TiTiler | 래스터 타일(스와이프) | 꺼짐 |
+| Before/After 위성 영상 | 개발 | 자체 COG → TiTiler(동네 단위, 10-5) | 래스터 타일(스와이프) | 꺼짐 |
 | 실거래 위치 | 시세 | 자체(`trade`) | GeoJSON 포인트 | 꺼짐 |
 | 범죄주의구간(전체) | 안전 | 생활안전지도 WMS `A2SM_CRMNLHSPOT_TOT` | 외부 WMS(중계) | 꺼짐 |
 
@@ -705,13 +706,13 @@ A0, A6·A7(특수지, PNU에 포함), A10, A19, A21, A23, A28은 적재하지 �
 | 컬럼 | 내용 |
 | --- | --- |
 | `id`, `name`, `group`, `order` | 식별자, 표시 이름, 그룹(기본·분석·환경·개발·시세·안전), 정렬 순서 |
-| `source_type` | `vector_tile` · `geojson` · `titiler` · `wms` |
+| `source_type` | `vector_tile` · `geojson` · `titiler` · `wms` · raster\_tile(OSM, 항공사진 영상지도) |
 | `source_params` (JSONB) | WMS는 서비스 URL·`LAYERS`·`STYLES`·`FORMAT`·`TRANSPARENT`, TiTiler는 COG 경로·컬러맵 |
 | `min_zoom`, `max_zoom`, `opacity`, `default_visible` | 표시 규칙 |
 | `legend` (JSONB) | 범례 항목 `[{no, label, color}]`. 범죄주의구간은 범례 JSON의 `LGD_NO`·`LGD_NM`·`IMAGE`를 저장 |
 | `notice` | 레이어와 함께 표시할 고지. 범죄주의구간은 범례 JSON의 `WARN` 문구 그대로 |
 | `attribution` | 출처 표기(예: 경찰청·생활안전지도, Copernicus Sentinel) |
-| `synced_at` | 범례·고지를 마지막으로 갱신한 시각(`safety_sync` 때 갱신) |
+| `synced_at` | `레이어 정보를 마지막으로 갱신한 시각(seed_map_layers, 위성 레이어는 catalog_publish 때 갱신. 범례는 고정 파일`) |
 
 ### 10-3. 외부 WMS 중계
 
@@ -742,6 +743,22 @@ A0, A6·A7(특수지, PNU에 포함), A10, A19, A21, A23, A28은 적재하지 �
 
 색상 팔레트 8색과 아이콘·배지의 실제 모양은 이후 UI 설계에서 확정한다.
 
+### 10-5. 영상 표시 규칙(항공사진과 위성)
+
+건물 폴리곤 단위 확대가 기본 화면이므로, 화면에 보이는 영상과 계산에 쓰는 영상을 나눈다. Sentinel-2(10m)는 폭 20m 건물이 픽셀 2개라 건물 확인용으로 쓸 수 없다.
+
+| 역할 | 데이터 | 표시 범위 |
+| --- | --- | --- |
+| 건물 확대 배경 | 항공사진 영상지도 API(브이월드 또는 국토지리정보원 WMTS). | 줌 16 이상 기본 배경, 사용자가 일반 지도와 전환 |
+| 녹지율·변화 계산 | Sentinel-2(10m) | 계산에만 사용 |
+| 위성 레이어(트루컬러, 녹지 마스크) | Sentinel-2 COG | 줌 15 이하 보조 레이어, 레이어 이름에 ‘10m 해상도’ 표시 |
+| Before/After | Sentinel-2 트루컬러(같은 계절끼리) | 동네 단위. 변화 구역을 누르면 그 구역의 전후 영상을 보여준다 |
+
+- **정사영상 다운로드(보류)**: 국토정보플랫폼의 최신 정사영상 TIFF를 `data/raw/ortho/{지역}/`에 넣으면 COG로 변환·모자이크해 고정 배경으로 쓴다. 시연용 지역(대전)만 받고, 나머지는 API를 쓴다. Sentinel-2 파이프라인과 별개의 ‘표시용 영상 적재’로 단순하게 둔다. 지금은 하지 않는다. 정사영상은 빠진 구역이 많고 수작업 수집이라, 배경은 영상지도 API(브이월드 등)만 쓴다.
+- **시점 차이 안내**: 항공사진은 최신 한 장(보통 1\~2년 전)이므로, 촬영일을 표시하고 ‘항공사진 촬영 시점과 위성 분석 기간은 다를 수 있음’을 안내한다.
+- **출처 표시**: 레이어별 출처는 `map_layer.attribution`에 넣고 지도 출처 표시로 보여준다(예: ‘출처: 국토지리정보원’, ‘Contains modified Copernicus Sentinel data’, ‘© OpenStreetMap contributors’). 전체 목록과 공공누리 정식 문구는 데이터 출처 페이지와 README에 둔다.
+- **확장 후보(지금 범위 밖)**: 여름철 변화 감지 Sentinel-1(SAR) 보완, 야간광(VIIRS) 분석, 항공사진 물체 탐지(EO), 과거 연도 정사영상으로 건물 단위 전후 비교.
+
 ## 11. 다지역 확장 구조
 
 지금은 대전만 서비스하지만, 다른 시도를 ‘추가’(동시 서비스)할 수 있게 지역을 데이터로 관리한다. 시도 코드는 사람이 입력하지 않고 전국 법정구역 파일(`AL_D001_00_*.zip`)에서 읽는다.
@@ -762,10 +779,10 @@ A0, A6·A7(특수지, PNU에 포함), A10, A19, A21, A23, A28은 적재하지 �
 | 대상 | 지역 구분 방법 |
 | --- | --- |
 | `building` | `bjd_code` 앞 2자리. 소프트 삭제는 같은 시도 안에서만 하고, 파일의 지역과 지정한 지역이 다르면 적재를 거부한다 |
-| `raster_product` | `region_code` 컨럼(재계산 키·COG 경로에 포함). 합성 결과는 시도 경계 밖을 nodata로 잘라 이웃 지역 COG와 겹치지 않게 한다(반경 통계 이중 계산 방지) |
+| `raster_product` | `region_code` 컬럼(재계산 키·COG 경로에 포함). 합성 결과는 시도 경계 밖을 nodata로 잘라 이웃 지역 COG와 겹치지 않게 한다(반경 통계 이중 계산 방지) |
 | `satellite_scene` | `(scene_id, region_code)` 유일. 같은 장면도 지역별로 따로 COG를 만든다 |
 | `crime_fetch_progress` | `(cell_id, region_code)` 유일 |
-| `crime_segment` | 지역 컨럼 없음(전국 공유). 정리는 시도 경계 폴리곤 안이면서 이번 실행에서 받지 않은 구간만 |
+| `crime_segment` | 지역 컬럼 없음(전국 공유). 정리는 시도 경계 폴리곤 안이면서 이번 실행에서 받지 않은 구간만 |
 | `trade`, `region_stat` | 각각 `sgg_code`, `region_code`로 이미 구분됨 |
 | 잠금·`index_run` | 시도 코드 기반 키(예: `30`, `30:2026:summer`) |
 
@@ -782,5 +799,5 @@ A0, A6·A7(특수지, PNU에 포함), A10, A19, A21, A23, A28은 적재하지 �
 
 ### 11-5. 남은 한계
 
-- 지도 레이어(녹지 마스크·트루컬러)는 지역 하나의 COG만 가리킨다. 지역이 둘 이상이면 지역별 레이어나 모자이크가 필요하다(프론트 단계에서 처리).
+- 지도 레이어(녹지 마스크·트루컬러)는 지역 하나의 COG만 가리킨다. 지역이 둘 이상이면 지역별 목록이 필요하다. ‘개발 프롬프트’ 탭 8-2(후속 작업)에서 /api/layers가 지역별 타일 주소 목록을 돌려주도록 고친다.
 - 위성 격자는 UTM 52존(EPSG:32652) 기준이라, 동경 126° 서쪽(백령도, 신안 섬 등)은 거리 왜곡이 커진다. 내륙은 문제없다.

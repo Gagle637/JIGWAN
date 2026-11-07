@@ -13,8 +13,17 @@ class MapLayer(models.Model):
         # 더 필요해서 추가했다(문서에 없는 값, 이번 플랜 리뷰에서 확정).
         RASTER_TILE = "raster_tile", "raster_tile"
 
+    class Kind(models.TextChoices):
+        BACKGROUND = "background", "background"
+        ANALYSIS = "analysis", "analysis"
+
+    # name은 화면 표시용이라 바뀔 수 있다(예: "(10m 해상도)" 접미사 추가) — seed_map_layers의
+    # upsert 키, crime_layer_id() 같은 다른 앱의 조회 키는 반드시 slug를 쓴다(0002~0004
+    # 마이그레이션에서 기존 행에 name 기준으로 한 번 채워 넣는다).
+    slug = models.SlugField(max_length=50, unique=True)
     name = models.CharField(max_length=100, unique=True)
     group = models.CharField(max_length=50)
+    kind = models.CharField(max_length=20, choices=Kind.choices, default=Kind.ANALYSIS)
     order = models.IntegerField(default=0)
     source_type = models.CharField(max_length=20, choices=SourceType.choices)
     source_params = models.JSONField(default=dict, blank=True)

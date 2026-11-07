@@ -8,10 +8,12 @@ pytestmark = pytest.mark.django_db
 
 def test_layers_endpoint_requires_no_auth_and_orders_by_order():
     MapLayer.objects.create(
-        name="레이어B", group="satellite", order=2, source_type=MapLayer.SourceType.TITILER
+        slug="layer-b", name="레이어B", group="satellite", order=2,
+        source_type=MapLayer.SourceType.TITILER,
     )
     MapLayer.objects.create(
-        name="레이어A", group="base", order=1, source_type=MapLayer.SourceType.RASTER_TILE
+        slug="layer-a", name="레이어A", group="base", order=1,
+        source_type=MapLayer.SourceType.RASTER_TILE,
     )
 
     client = APIClient()  # 로그인 없이 호출(spec 9-1: 레이어는 비로그인 허용)
@@ -24,8 +26,10 @@ def test_layers_endpoint_requires_no_auth_and_orders_by_order():
 
 def test_layers_endpoint_serializes_all_fields():
     layer = MapLayer.objects.create(
+        slug="green-mask-test",
         name="녹지 마스크",
         group="satellite",
+        kind=MapLayer.Kind.ANALYSIS,
         order=5,
         source_type=MapLayer.SourceType.TITILER,
         source_params={"cog_path": "/tmp/x.tif"},
@@ -43,10 +47,12 @@ def test_layers_endpoint_serializes_all_fields():
     row = response.json()[0]
 
     assert row["id"] == layer.id
+    assert row["slug"] == "green-mask-test"
+    assert row["kind"] == "analysis"
     assert row["group"] == "satellite"
     assert row["order"] == 5
     assert row["source_type"] == "titiler"
-    assert row["source_params"] == {"cog_path": "/tmp/x.tif"}
+    assert row["source_params"] == {"cog_path": "/tmp/x.tif", "regions": []}
     assert row["min_zoom"] == 10
     assert row["max_zoom"] == 18
     assert row["opacity"] == 0.8

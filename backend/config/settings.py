@@ -26,6 +26,7 @@ INSTALLED_APPS = [
     "django.contrib.staticfiles",
     "django.contrib.gis",
     "rest_framework",
+    "drf_spectacular",
     "corsheaders",
     "django_celery_beat",
     # 공용
@@ -141,6 +142,16 @@ REST_FRAMEWORK = {
         "insight": "60/min",
         "search": "30/min",
     },
+    "DEFAULT_SCHEMA_CLASS": "drf_spectacular.openapi.AutoSchema",
+}
+
+SPECTACULAR_SETTINGS = {
+    "TITLE": "지관(JIGWAN) API",
+    "DESCRIPTION": "대전 건물 단위 입지 분석 서비스 API (docs/spec.md 6장 참고)",
+    "VERSION": "1.0.0",
+    # 뷰 자체(buildings/views.py 등)에 스키마 데코레이터가 아직 없어, 지금은 DRF가 추론한
+    # 기본 스키마만 보인다 — 필요하면 나중에 @extend_schema로 설명·예시를 덧붙인다.
+    "SERVE_INCLUDE_SCHEMA": False,
 }
 
 SIMPLE_JWT = {

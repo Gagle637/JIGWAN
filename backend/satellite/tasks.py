@@ -10,7 +10,11 @@ from .change_detection import run_change_analysis
 from .collect import collect_scenes
 from .composite import run_season_composite
 from .region_stats import run_region_stat
-from .retention import cleanup_old_scene_cogs
+from .retention import (
+    cleanup_old_excluded_scene_cogs,
+    cleanup_old_scene_cogs,
+    cleanup_superseded_scene_cogs,
+)
 
 # 5일 주기지만, 늦게 등록되는 장면을 놓치지 않으려고 더 넓게 훑는다(이미 있는 scene_id는 건너뜀).
 LOOKBACK_DAYS = 30
@@ -64,11 +68,19 @@ def catalog_publish(self, region_code, year, season, sido_code):
 @shared_task(bind=True, base=TrackedTask, max_retries=3)
 @tracked_job(job_name="cleanup_scene_cogs", lock_ttl_seconds=3600)
 def cleanup_scene_cogs_task(self, region_code="global"):
-    """spec 5-4: 장면별 COG는 계절 합성에 쓰인 지 90일 지나면 삭제. 주 1회(Beat, cpu 큐).
+    """spec 5-4: 장면별 COG 정리, 주 1회(Beat, cpu 큐). 세 가지를 한 번에 돈다(버그4 수정) —
+    ready(계절 합성에 쓰인 지 90일), excluded(수집 후 30일), superseded(baseline 교체로
+    대체된 행, 기간 조건 없이 즉시) 전부 COG 파일만 지우고 행은 남긴다.
 
-    지역별 작업이 아니다(모든 지역의 오래된 장면 COG를 한 번에 정리) — region_code는 실제
-    지역이 아니라 이 전역 잡의 잠금/index_run 식별자일 뿐이다."""
-    return cleanup_old_scene_cogs()
+    지역별 작업이 아니다(모든 지역을 한 번에 정리) — region_code는 실제 지역이 아니라
+    이 전역 잡의 잠금/index_run 식별자일 뿐이다. 세 함수 전부 기본이 dry_run=True라
+    여기서 dry_run=False를 명시해야 실제로 지운다(CLAUDE.md 규칙 — 삭제를 일으키는
+    경로는 안전한 기본값을 쓰고, 실제 실행은 명시적으로 opt-in한다)."""
+    return {
+        "ready_90d": cleanup_old_scene_cogs(dry_run=False),
+        "excluded_30d": cleanup_old_excluded_scene_cogs(dry_run=False),
+        "superseded": cleanup_superseded_scene_cogs(dry_run=False),
+    }
 
 
 def build_season_chain(year: int, season: str, sido_code: str):

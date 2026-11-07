@@ -5,6 +5,7 @@ import numpy as np
 import rasterio
 from django.contrib.gis.geos import GEOSGeometry
 from django.db import transaction
+from django.utils import timezone
 from rasterio.features import shapes
 from rasterio.warp import transform_geom
 from scipy import ndimage
@@ -181,6 +182,7 @@ def run_change_analysis(year: int, season: str, sido_code: str) -> dict:
                 scene_ids=current_ndvi_product.scene_ids,
                 valid_ratio=valid_ratio,
                 is_published=False,
+                composited_at=timezone.now(),
             )
             for area in areas:
                 ChangeArea.objects.create(

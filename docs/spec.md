@@ -2,15 +2,15 @@
 
 Oct 16, 2026 · @준호
 
-이 탭은 기획서의 ‘무엇을 왜’를 백엔드가 바로 구현할 수 있는 ‘어떻게’로 풀어 쓴다. 수치와 규칙은 제안 기본값이며, 1장의 결정 항목이 확정되면 이에 맞춰 고친다.
+이 탭은 기획서의 ‘무엇을 왜’를 백엔드가 바로 구현할 수 있는 ‘어떻게’로 풀어 쓴다. 수치와 규칙은 구현에 반영된 값이다. 아직 구현하지 않은 항목은 그 자리에 ‘미구현’ 또는 ‘보류’로 적었다.
 
 ## 1. 착수 전 확정할 결정
 
-아래 8개는 개발자가 임의로 정하면 안 되는 항목이다. 제안 기본값으로 착수하되, P0 종료 전까지 확정한다.
+아래 8개는 개발자가 임의로 정하면 안 되는 항목이었다. 지금은 모두 아래 값으로 확정해 구현했다.
 
-| 결정 항목 | 제안 기본값 | 영향받는 작업 |
+| 결정 항목 | 확정값 | 영향받는 작업 |
 | --- | --- | --- |
-| 시범 지역 | 대전광역시 5개 구(확정) | 위성 타일 수, 백필 용량, 변화 감지 검증 현장 선정 |
+| 시범 지역 | 대전광역시 5개 구(확정) | 위성 타일 수, 백필 용량 |
 | 위성 데이터 접근 방식 | STAC(pystac-client) 검색 + CDSE S3 다운로드(확정) | 수집 잡 구현, 저장 형식 |
 | 좌표계 | 저장 EPSG:4326, 표출 EPSG:3857(확정). 미터 계산은 geography 형변환(3-0) | 모든 벡터 적재와 공간 쿼리, 반경 계산 |
 | 계절 구간 | 봄 3–5월, 여름 6–8월, 가을 9–11월, 겨울 12–2월 | 합성 스케줄, 변화 감지 비교 쌍 |
@@ -45,8 +45,8 @@ search = cat.search(
     collections=["sentinel-2-l2a"],
     bbox=[127.24, 36.18, 127.56, 36.50],   # 대전 대략 범위(경계 폴리곤으로 교체)
     datetime="2026-06-01/2026-08-31",
-    filter="eo:cloud_cover <= 70",
-    filter_lang="cql2-text",
+    filter={"op": "<=", "args": [{"property": "eo:cloud_cover"}, 70]},
+    filter_lang="cql2-json",   # CDSE는 cql2-text를 받지 않는다(실측)
 )
 items = list(search.items())
 tiles = {item.id.split("_")[5] for item in items}   # 예: {"T52SCF", ...}
@@ -63,15 +63,18 @@ STAC 항목의 에셋 키와 S3 접근 설정은 CDSE 문서([STAC 카탈로그 
 
 - 같은 밴드가 해상도별로 여러 키(`B04_10m`, `B04_20m`, `B04_60m`)로 들어 있으므로, 패턴 매칭이 아니라 위 키를 정확히 지정한다.
 - 에셋 href는 `s3://eodata/.../{장면}.SAFE/GRANULE/.../IMG_DATA/R10m/{타일}_{날짜}_B04_10m.jp2` 형식이다. `MTD_MSIL2A.xml`은 href를 `.SAFE/`까지 자른 뒤 파일명을 붙여 경로를 만든다(메타데이터 에셋 키에 의존하지 않음).
-- 같은 에셋에 https 다운로드 주소도 있지만 토큰이 필요하므로, 우리는 `s3://` 경로를 S3 키로 읽는다.
+- 같은 에셋에 https 다운로드 주소도 있지만 토큰이 필요하므로, 우리는 `s3://` 경로의 파일을 S3 키로 내려받는다(boto3).
 
 ```python
-# rasterio/GDAL로 CDSE S3를 읽을 때의 환경 변수(키는 .env)
-os.environ["AWS_S3_ENDPOINT"] = "eodata.dataspace.copernicus.eu"
-os.environ["AWS_ACCESS_KEY_ID"] = CDSE_S3_ACCESS_KEY
-os.environ["AWS_SECRET_ACCESS_KEY"] = CDSE_S3_SECRET_KEY
-os.environ["AWS_HTTPS"] = "YES"
-os.environ["AWS_VIRTUAL_HOSTING"] = "FALSE"
+# boto3로 CDSE S3(eodata)에서 필요한 파일만 내려받는다(키는 .env)
+client = boto3.client(
+    "s3",
+    endpoint_url=settings.CDSE_S3_ENDPOINT,   # https://eodata.dataspace.copernicus.eu
+    region_name="default",
+    aws_access_key_id=settings.CDSE_S3_ACCESS_KEY,
+    aws_secret_access_key=settings.CDSE_S3_SECRET_KEY,
+)
+client.download_file("eodata", key, str(local_path))   # key = href에서 s3://eodata/ 뒤쪽
 ```
 
 ### 2-2. 반사율 변환
@@ -134,6 +137,8 @@ os.environ["AWS_VIRTUAL_HOSTING"] = "FALSE"
 | `scene_ids`, `valid_ratio` | 합성에 쓴 장면, 범위 안 유효 픽셀 비율 |
 | `is_published` | 검증 통과 후 true. 조회는 true인 행만 검색 |
 
+이 밖에 `region_code`(시도 코드. 재계산 키와 COG 경로에 들어간다, 11-2)와 `composited_at`(합성이 실제로 끝난 시각. 장면 COG 보관 기한의 기준, 5-4)이 있다.
+
 ```sql
 SELECT id, year, season, cog_path
 FROM raster_product
@@ -171,12 +176,12 @@ MVP는 대전 전역을 결과 하나로 저장하므로 기간당 보통 한 �
 | 항목 | 초기값 | 조정 방법 |
 | --- | --- | --- |
 | 녹지 화소 | NDVI ≥ 0.4 | 시범 지역 공원·도로 샘플 화소로 확인 |
-| 개발 후보 화소 | ΔNDBI > +0.1 그리고 ΔNDVI < −0.15 | 검증 현장 30곳의 정밀도 80% 달성 시까지 |
+| 개발 후보 화소 | ΔNDBI > +0.1 그리고 ΔNDVI < −0.15 | 초기값으로 고정. 수작업 현장 검증은 하지 않고, 눈에 띄는 오탐이 보이면 그때 조정한다 |
 | 변화 폴리곤 최소 크기 | 8방향 연결 10화소(0.1ha) | 노이즈 비율 확인 후 조정 |
 
 ## 4. 초기 적재(백필) 계획
 
-서비스를 열려면 최신 계절과 그 이전 3년치, 총 13개 계절의 합성이 먼저 있어야 한다. 2026년 10월 기준이면 2023년 여름부터 2026년 여름까지다. 백필은 별도 코드가 아니라 정기 잡을 `mode=backfill`과 계절 파라미터로 돌린다.
+서비스를 열려면 최신 계절과 그 이전 3년치, 총 13개 계절의 합성이 먼저 있어야 한다. 2026년 10월 기준이면 2023년 여름부터 2026년 여름까지다. 백필은 별도 로직이 아니라, `backfill` 명령(또는 `areas sync`)이 정기 잡과 같은 함수를 계절별로 차례로 호출한다.
 
 1. **기반 적재**: 건물, 행정경계를 적재한다.
 2. **장면 목록 작성(dry run)**: 13개 계절 전체를 STAC로 검색해 `satellite_scene`에 `status=listed`로 기록한다. 이 단계에서 총 장면 수·예상 다운로드 용량을 집계해 CDSE 한도 안에서 일정을 잡는다.
@@ -184,7 +189,7 @@ MVP는 대전 전역을 결과 하나로 저장하므로 기간당 보통 한 �
 4. **변화 분석**: 13개 계절 합성이 끝난 뒤 최신 계절을 1·2·3년 전 같은 계절과 비교해 변화 마스크·`change_area`를 만들고 카탈로그에 등록한다.
 5. **지역 기준선**: 계절별 구·시 평균 녹지율을 `region_stat`에 저장한다.
 6. **공공데이터 백필**: 실거래 24개월(API), 건물·건축물대장(GIS건물통합정보 파일), 범죄주의 밀도 구역을 적재한다. 3–5단계와 병렬로 돌려도 된다.
-7. **검증 후 게시**: 유효 비율·값 범위·대전 경계 커버리지를 확인하고 카탈로그 행을 `is_published = true`로 바꾼다.
+7. **검증 후 게시**: 값 범위·지역 격자와의 일치·지역 경계 안 유효 비율(10% 이상)을 확인하고 카탈로그 행을 `is_published = true`로 바꾼다.
 
 | 완료 기준 | 확인 방법 |
 | --- | --- |
@@ -209,8 +214,10 @@ MVP는 대전 전역을 결과 하나로 저장하므로 기간당 보통 한 �
 | `catalog_publish` | 두 잡 완료 후 | cpu | 검증 통과 시 카탈로그 게시(5-3) |
 | `trade_sync` | 매일 04:00 | io | 당월·전월 재수집 |
 | `register_sync` | 매월 1일 05:00 | io | MVP 제외(건축물대장 속성은 building\_load로 함께 적재, 8-6) |
-| `safety_sync` | 매년 1월 첫째 주 + 수동 | io | 범죄주의 밀도 구역 수집(범례는 고정 파일, layers/fixtures/crime\_legend\_tot.json) |
+| `safety_sync` | 매년 1월 5일 03:00 + 수동 | io | 범죄주의 밀도 구역 수집(범례는 고정 파일, layers/fixtures/crime\_legend\_tot.json) |
 | `building_load` | 수동(새 파일을 받았을 때) | cpu | GIS건물통합정보 파일 적재 |
+
+정리 잡은 매주 월요일 03:30에 cpu 큐에서 돈다(`seed_cleanup_schedule`): 보관 기한이 지난 장면 COG 정리(`cleanup_scene_cogs`)와 1년 지난 `index_run` 정리다. 장면 COG 정리는 실데이터 삭제 사고 뒤 Beat에서 꺼 두었고, 실제 DB에서 dry-run 결과가 0건인 것을 확인한 뒤 다시 켠다. 정기 잡은 모두 디스패처가 활성 지역마다 따로 실행한다(11-4).
 
 리포트는 스케줄 잡이 아니다. 사용자가 리포트를 요청하면 API가 gpu 큐에 생성 작업을 넣는다.
 
@@ -221,16 +228,16 @@ MVP는 대전 전역을 결과 하나로 저장하므로 기간당 보통 한 �
 | 항목 | 규칙 |
 | --- | --- |
 | 체이닝 | Celery canvas: `season_composite → group(change_analysis, region_stat) → catalog_publish`. 앞 단계가 실패하면 뒤 단계는 실행하지 않음 |
-| 멱등성 키 | `(job, region_code, year, season)`. `index_run`에는 year·season을 region\_code 문자열에 함께 넣어 기록한다(예: `daejeon:2026:summer`). 같은 키의 기존 행을 한 트랜잭션 안에서 지우고 다시 쓴다 |
+| 멱등성 키 | `(job, region_code, year, season)`. `index_run`에는 year·season을 region\_code 문자열에 함께 넣어 기록한다(예: `30:2026:summer`). 같은 키의 기존 행을 한 트랜잭션 안에서 지우고 다시 쓴다 |
 | 파일 쓰기 | 임시 경로에 쓴 뒤 완료 시 rename. 중간에 죽어도 반쯤 쓴 COG가 남지 않음 |
-| 동시 실행 방지 | Redis 잠금 `lock:{job}:{region_code}`(TTL = 잡 최대 시간 × 2). 잠금이 있으면 `skipped`로 기록 |
+| 동시 실행 방지 | Redis 잠금 `lock:{job}:{region_code}`(TTL은 잡마다 고정: 수집 6시간, 합성 4시간, 변화 분석 2시간, 그 외 1시간). 잠금이 있으면 `skipped`로 기록 |
 | 재시도 | 외부 호출 오류(네트워크, 5xx, 429)만 3회, 1·5·25분 간격. 데이터 오류는 재시도하지 않고 즉시 `failed` |
 | 실행 기록 | `index_run.status`: queued → running → succeeded / failed / skipped, `error`에 예외 요약 |
-| 알림 | `failed` 발생 또는 잡이 예상 시간의 2배를 넘기면 관리자 알림(채널은 9장) |
+| 알림 | `failed` 발생 또는 잡이 예상 시간의 2배를 넘기면 관리자 알림(채널은 9장). 알림은 아직 미구현이라 지금은 Django 관리자 화면의 index\_run과 areas status로 확인한다 |
 
 ### 5-3. 결과 게시
 
-새 계절 결과는 검증(유효 비율, 값 범위, 대전 경계 커버리지)을 통과한 뒤에만 `raster_product.is_published`를 true로 바꾼다. 조회는 게시된 행만 검색하므로, 배치 도중에도 사용자는 일부만 만들어진 결과를 보지 않는다.
+새 계절 결과는 검증(값 범위, 지역 격자와의 일치, 지역 경계 안 유효 비율 10% 이상)을 통과한 뒤에만 `raster_product.is_published`를 true로 바꾼다. 조회는 게시된 행만 검색하므로, 배치 도중에도 사용자는 일부만 만들어진 결과를 보지 않는다.
 
 ### 5-4. 보관
 
@@ -264,7 +271,7 @@ MVP는 대전 전역을 결과 하나로 저장하므로 기간당 보통 한 �
   "status": "ready",
   "building": {"id": 18273, "pnu": "0000000000000000000", "name": "예시아파트 101동", "address": "○○시 ○○구 ○○동 123", "use_type": "공동주택", "geometry": {"type": "Polygon", "coordinates": []}},
   "radius_m": 500,
-  "as_of": {"satellite_period": "2026-06-01/2026-08-31", "trade_synced_at": "2026-10-16T04:12:00+09:00", "register_synced_at": "2026-10-01T05:40:00+09:00", "crime_data_period": "2025-01/2025-12"},
+  "as_of": {"satellite_period": "2026-06-01/2026-08-31", "trade_synced_at": "2026-10-16T04:12:00+09:00", "register_synced_at": null, "crime_data_period": "2025-01/2025-12"},
   "green": {
     "ratio_pct": 23.4, "region_avg_pct": 18.1, "diff_pp": 5.3, "coverage_pct": 92,
     "series": [{"year": 2023, "season": "summer", "ratio_pct": 22.0, "coverage_pct": 71}]
@@ -290,6 +297,8 @@ MVP는 대전 전역을 결과 하나로 저장하므로 기간당 보통 한 �
 
 로그인한 경우 `my`에 내 표시(즐겨찾기·색상·라벨)와 이 건물의 내 리포트 수가 들어가고, 비로그인이면 `my`는 `null`이다. 리포트 본문은 insight에 넣지 않는다.
 
+`register_synced_at`은 건축물대장 동기화가 MVP 범위 밖이라 항상 `null`이다. `trades`는 매매만 집계하고(반경은 `radius`와 무관하게 500m 고정), 전월세는 저장만 한다.
+
 ### 6-3. 에러 규약
 
 에러 본문은 `{"error": {"code": "...", "message": "..."}}` 형식으로 통일한다.
@@ -299,16 +308,18 @@ MVP는 대전 전역을 결과 하나로 저장하므로 기간당 보통 한 �
 | 400 | `INVALID_PARAM` | 반경·좌표·기간 파라미터 오류 |
 | 404 | `BUILDING_NOT_FOUND` | 건물 ID 없음 |
 | 404 | `NO_BUILDING_AT_POINT` | 클릭 좌표에 건물 없음 |
-| 404 | `OUT_OF_COVERAGE` | 인덱싱 대상 지역 밖 |
+| 404 | `OUT_OF_COVERAGE` | 인덱싱 대상 지역 밖(미구현: 지금은 건물이 없으면 NO\_BUILDING\_AT\_POINT, 위성 결과가 없으면 status pending으로 응답한다) |
 | 429 | `RATE_LIMITED` | 요청 제한 초과(9장) |
-| 500 | `INTERNAL` | 서버 오류, 요청 ID를 함께 반환 |
+| 500 | `INTERNAL` | 서버 오류(요청 ID 반환은 미구현) |
 | 401 | UNAUTHORIZED | 로그인이 필요한 API를 비로그인으로 호출, 토큰 만료 |
 | 403 | FORBIDDEN | 다른 사용자의 리포트·표시에 접근 |
 | 429 | REPORT\_QUOTA\_EXCEEDED | 사용자별 하루 리포트 생성 한도 초과 또는 이미 생성 중인 리포트 있음 |
 
+이 밖에 대상이 없으면 404 `NOT_FOUND`(예: 없는 리포트), `/api/health`에서 DB나 Redis에 연결하지 못하면 503 `SERVICE_UNAVAILABLE`을 돌려준다.
+
 ### 6-4. 리포트·사용자 데이터 API
 
-리포트는 건물 조회와 분리된 사용자별 리소스다. 생성 요청은 즉시 `report_id`를 돌려주고, 생성이 끝날 때까지 `status`는 `generating`이다. 프론트는 `GET /api/reports/{id}`를 2초 간격으로 최대 60초까지 폴링한다.
+리포트는 건물 조회와 분리된 사용자별 리소스다. 생성 요청은 즉시 `report_id`를 돌려주고, 생성이 끝날 때까지 `status`는 `generating`이다. 프론트는 `GET /api/reports/{id}`를 status가 ready나 failed가 될 때까지 폴링한다(2초로 시작해 10초까지 간격을 늘린다). 로컬 Ollama(CPU)는 생성에 수 분이 걸릴 수 있어 60초 같은 고정 제한은 두지 않는다.
 
 ```json
 POST /api/buildings/18273/reports
@@ -318,12 +329,14 @@ POST /api/buildings/18273/reports
 GET /api/reports/9912
 → 200 {
   "report_id": 9912, "building_id": 18273, "radius_m": 500,
-  "report_type": "custom", "prompt": "아이 둘 키우는 ...",
-  "status": "ready", "model": "gpt-oss-20b", "created_at": "2026-10-16T14:02:11+09:00",
+  "report_type": "custom", "template_version": null, "prompt_version": "v1",
+  "status": "ready", "model": "gpt-oss:20b", "created_at": "2026-10-16T14:02:11+09:00",
   "data_as_of": {"satellite_period": "2026-06-01/2026-08-31", "trade_synced_at": "2026-10-16T04:12:00+09:00"},
   "result": {"title": "...", "answer": "...", "evidence": [{"index": 0, "keys": ["green.ratio_pct"]}], "limitations": ["통학 거리는 제공 데이터에 없음"]}
 }
 ```
+
+목록(`GET /api/buildings/{id}/reports`)은 리포트마다 `id`, `report_type`, `user_prompt`, `status`, `created_at`을 준다. 상세 응답에는 프롬프트 원문이 없고(목록의 `user_prompt`로 확인), 실패한 리포트는 `result` 대신 `error`에 실패 사유가 들어간다.
 
 | 항목 | 규칙 |
 | --- | --- |
@@ -387,7 +400,7 @@ GET /api/me/favorites
 | 추론 수준 | low(시스템 프롬프트에 지정). 품질이 부족하면 medium과 비교 |
 | 샘플링 | temperature 0.3, max\_tokens 4,000(아래 출력 강제 참고) |
 | 출력 강제 | `response_format`은 `json_object`(Ollama·vLLM 공통 지원)로 JSON만 받고, 7-3(기본 템플릿)·7-6(맞춤) 스키마 준수는 검증기(7-4)에서 확인한다. `max_tokens`는 4000: gpt-oss가 추론 토큰을 먼저 쓰기 때문에 1200이면 JSON이 비어서 끊기는 문제를 실측으로 확인했다 |
-| 동시성 | API가 gpu 큐에 넣고 워커가 LLM 서버(Ollama 또는 vLLM)에 보냄. 제한 시간은 `LLM_TIMEOUT_SECONDS`(기본 180초, 로컬 실행은 느릴 수 있음) |
+| 동시성 | API가 gpu 큐에 넣고 워커가 LLM 서버(Ollama 또는 vLLM)에 보냄. 제한 시간은 `LLM_TIMEOUT_SECONDS`(기본 480초. CPU 실측이 약 12.6토큰/초라 4,000토큰이면 5분쯤 걸린다) |
 
 ### 7-2. 프롬프트 구성
 
@@ -427,7 +440,7 @@ Reasoning: low
 1. JSON 파싱과 스키마 검사를 통과해야 한다.
 2. `evidence`의 모든 키가 입력 JSON에 존재하고 값이 `null`이 아니어야 한다.
 3. 본문에서 추출한 모든 숫자가 입력값(반올림 허용)과 일치해야 한다.
-4. 금지어 목록(예: 매수 추천, 반드시, 확실히 오른다, 위험 지역)에 걸리지 않아야 한다.
+4. 금지어 목록(매수 추천, 매도 추천, 반드시, 확실히 오른다, 위험)에 걸리지 않아야 한다.
 
 실패하면 실패 사유를 덧붙여 최대 2회 재생성한다. 그래도 실패하면 리포트를 `status: failed`와 실패 사유로 저장하고, 사용자의 하루 생성 한도에서는 차감하지 않는다.
 
@@ -439,7 +452,7 @@ Reasoning: low
 | 채점 | 사실 정확성, 한국어 자연스러움, 유용성 각 1–5점(사람 채점) |
 | 통과 기준 | 사실 오류 0건, 자연스러움 평균 4점 이상 |
 | 모델 선택 | 20b가 통과하면 20b, 아니면 같은 샘플로 120b 평가 |
-| 처리량 산정 | 건당 생성 시간(토큰 수 ÷ 측정 처리량)과 동시 요청 수로 대기 시간을 추정해, 첫 생성 30초 목표를 지킬 수 있는 동시 생성 수를 정한다 |
+| 처리량 산정 | 건당 생성 시간(토큰 수 ÷ 측정 처리량)과 동시 요청 수로 대기 시간을 추정해, 첫 생성 30초 목표(GPU 서빙 기준)를 지킬 수 있는 동시 생성 수를 정한다. 지금은 사용자당 동시 생성 1건으로 고정했다(6-4) |
 
 ### 7-6. 기본 템플릿과 맞춤 리포트
 
@@ -462,15 +475,15 @@ Reasoning: low
 
 | 주택 유형 | 위치 정보 | 매칭 단위 | 매칭 규칙 | 목표 매칭률 |
 | --- | --- | --- | --- | --- |
-| 아파트 | 법정동 + 본번·부번, 단지명 | 단지(같은 PNU의 건물 전체) | 지번 → PNU, 실패 시 같은 법정동 안에서 단지명과 건축물대장 건물명 유사도 매칭 | 95% |
+| 아파트 | 법정동 + 본번·부번, 단지명 | 단지(같은 PNU의 건물 전체) | 매매는 응답의 코드로 PNU를 바로 조립하고, 전월세는 aptSeq → PNU 대응을 먼저 쓴 뒤 없으면 법정동명 + 지번으로 조립한다(8-7). 단지명 유사도 매칭은 미구현 | 95% |
 | 오피스텔 | 법정동 + 지번, 건물명 | 필지 | 지번 → PNU | 90% |
 | 연립·다세대 | 법정동 + 지번, 건물명 | 필지 | 지번 → PNU | 90% |
 | 단독·다가구 | 법정동 + 지번 일부 | 법정동 | 건물 매칭 안 함. 법정동 단위 시세로만 집계 | 해당 없음 |
 
 - 아파트 거래에는 동 정보가 없으므로, 건물 화면의 ‘해당 건물 거래’는 단지 전체 거래로 표시한다.
-- 반경 500m 시세 집계는 PNU가 매칭된 거래만 쓴다. 단독·다가구는 별도 항목 `trades.district_detached`로 법정동 단위 값을 주고, 기준 단위를 명시한다.
+- 반경 500m 시세 집계는 PNU가 매칭된 거래만 쓴다. 단독·다가구의 법정동 단위 값(`trades.district_detached`)은 아직 미구현이다. 그래서 단독주택 건물은 `trades`를 `null`로 주고 `missing`에 사유(`detached_house_district_not_implemented`)를 넣는다.
 - 계약해제로 표시된 거래는 집계에서 제외한다.
-- ㎡당 단가는 매매만 계산(거래금액 ÷ 전용면적)하고, 전월세는 보증금·월세를 환산 없이 따로 둔다.
+- ㎡당 단가는 매매만 계산(거래금액 ÷ 전용면적)하고, 전월세는 보증금·월세를 환산 없이 따로 저장한다(전월세는 아직 insight 집계에 넣지 않는다).
 - 매칭 실패 건은 `trade.pnu = null`로 저장하고 사유를 남겨 매칭률을 유형별로 모니터링한다.
 
 ### 8-2. 호출량과 한도
@@ -497,11 +510,11 @@ Reasoning: low
 
 ### 8-4. 범죄주의구간 수집
 
-1. 먼저 probe\_crime\_feature\_cap 명령으로 서버의 실제 결과 상한을 재서 .env의 CRIME\_FEATURE\_CAP에 넣는다(값이 없으면 수집을 시작하지 않는다). 그다음 대전 경계를 2km × 2km 구역으로 나눈다(수집할 때만 쓰는 임시 구역).
+1. 먼저 probe\_crime\_feature\_cap 명령으로 서버의 실제 결과 상한을 재서 .env의 CRIME\_FEATURE\_CAP에 넣는다(값이 없으면 수집을 시작하지 않는다). 그다음 지역 bbox를 2km × 2km 구역으로 나눈다(수집할 때만 쓰는 임시 구역).
 2. 구역마다 `GetFeatureInfo`를 한 번 호출한다. `BBOX`는 구역, 조회 지점은 구역 중앙, 픽셀 버퍼는 구역 전체를 덮는 크기, `FEATURE_COUNT`는 크게, 응답은 GeoJSON으로 받는다.
 3. 반환된 피처 수가 `FEATURE_COUNT` 또는 CRIME\_FEATURE\_CAP 중 작은 값 이상이면 잘렸을 수 있으므로(서버에 숨은 상한이 있을 수 있다), 그 구역을 4등분해 다시 호출한다(최소 250m까지). 서버에 픽셀 버퍼 상한이 있으면 구역 크기를 그에 맞춰 줄인다.
 4. 구역 경계에 걸친 구간은 여러 번 오므로 `OBJT_ID`로 중복 제거해 `crime_segment(objt_id, grad, data_period, geom MultiPolygon 4326)`에 저장한다.
-5. 진행 상황을 구역 단위로 `crime_fetch_progress(cell_id, status, feature_count, fetched_at)`에 기록해, 중간에 끊기면 미완료 구역부터 이어서 돌린다.
+5. 진행 상황을 구역 단위로 `crime_fetch_progress(cell_id, region_code, status, feature_count, fetched_at)`에 기록해, 중간에 끊기면 미완료 구역부터 이어서 돌린다.
 6. 요청 사이에 1–2초 간격을 두고, 429·503·타임아웃은 1·5·25분 간격으로 최대 3회 재시도한다. 그래도 실패한 구역은 `failed`로 남겨 다음 실행에서 다시 시도한다.
 7. 호출량은 구역 수와 분할 호출을 합쳐 수백 회 수준이다.
 
@@ -533,7 +546,7 @@ Reasoning: low
 | --- | --- | --- |
 | PNU(A2) | 전 건물에 19자리로 있음, 필지 121,011개 | 실거래·필지 연결 키 |
 | 한 필지의 건물 수 | 25,036개 필지에 2동 이상, 최대 215동(아파트 단지) | 실거래 ‘단지 전체’ 매칭(8-1)과 일치 |
-| 식별자 | A0(원천도형ID)는 대부분 중복, A1(GIS건물통합식별번호)도 460행 중복 | 자체 일련번호를 PK로 두고 A1은 일반 인덱스 |
+| 식별자 | A0(원천도형ID)는 대부분 중복, A1(GIS건물통합식별번호)도 460행 중복 | 자체 일련번호를 PK로 두고 A1은 일반 인덱스. 재적재용 고정 키 building\_key는 A1(중복이면 A1\_순번)으로 만든다 |
 | 대장 속성 | 69.5%만 있음. 나머지는 면적·층수가 0으로 채워져 있음 | A8(용도코드)이 비면 수치 0을 NULL로 바꿔 적재, 화면은 ‘대장 정보 없음’ |
 | 건물명·동명 | 6.9%·8.5%만 있음 | 이름 검색은 공동주택 위주, 주소 검색은 지번(A4 + A5) 기준 |
 | 도형 | 유효하지 않은 도형 3개 | `ST_MakeValid` 후 EPSG:5186 → 4326 변환 |
@@ -555,7 +568,7 @@ Reasoning: low
 | A26 · A27 | 지상 · 지하 층수 | `floors_above`, `floors_below` |
 | A22 | 데이터기준일자 | `source_date` |
 
-A0, A6·A7(특수지, PNU에 포함), A10, A19, A21, A23, A28은 적재하지 않는다. MVP에서는 세움터 건축물대장 파일을 받지 않고, 이 파일에 없는 세대수·총괄표제부(단지 전체 정보)가 필요해지면 2단계에서 추가한다. 새 파일을 받으면 `load_buildings` 명령으로 전체를 교체한다(파일을 사람이 내려받으므로 스케줄 잡으로 돌리지 않는다).
+A0, A6·A7(특수지, PNU에 포함), A10, A19, A21, A23, A28은 적재하지 않는다. MVP에서는 세움터 건축물대장 파일을 받지 않고, 이 파일에 없는 세대수·총괄표제부(단지 전체 정보)가 필요해지면 2단계에서 추가한다. 새 파일을 받으면 `load_buildings` 명령으로 다시 적재한다. building\_key 기준으로 덮어써서(upsert) 건물 id가 유지되고(즐겨찾기·리포트 연결 보존), 새 파일에서 빠진 건물은 같은 시도 안에서만 is\_active=false로 둔다(파일을 사람이 내려받으므로 스케줄 잡으로 돌리지 않는다).
 
 ### 8-7. 실거래 유형별 필드 정규화
 
@@ -653,10 +666,10 @@ A0, A6·A7(특수지, PNU에 포함), A10, A19, A21, A23, A28은 적재하지 �
 
 ### 9-3. 로깅·모니터링
 
-- 로그는 JSON 형식으로 남기고, API는 `request_id`, 배치는 `run_id`를 모든 줄에 포함한다.
-- MVP 모니터링은 Flower(Celery 작업 상태)`, Django 관리자 화면의 index_run, areas status 명령`로 한다.
+- 로그는 JSON 형식으로 남기고, API는 `request_id`, 배치는 `run_id`를 모든 줄에 포함한다(미구현: 지금은 Django 기본 로그).
+- MVP 모니터링은 Django 관리자 화면의 `index_run`과 `areas status` 명령으로 한다(Flower는 넣지 않았다).
 - 추적 지표: API p90·5xx 비율, 잡별 소요 시간, 결과 카탈로그 커버리지, 리포트 생성 대기 시간, 디스크 사용량, GPU 사용률.
-- 알림 채널(슬랙 웹훅 또는 이메일)은 P0에서 정한다.
+- 알림 채널(슬랙 웹훅 또는 이메일)은 아직 정하지 않았고, 알림도 미구현이다.
 
 ### 9-4. 배포
 
@@ -665,10 +678,12 @@ A0, A6·A7(특수지, PNU에 포함), A10, A19, A21, A23, A28은 적재하지 �
 | `api` | Django + DRF(gunicorn) |
 | `beat` | Celery Beat, 단일 인스턴스만 실행 |
 | `worker-io`, `worker-cpu`, `worker-gpu` | 큐별 Celery 워커(`worker-gpu`는 LLM 서버(Ollama 또는 vLLM)를 호출만 하므로 GPU 불필요) |
-| `db` | PostgreSQL + PostGIS, 매일 `pg_dump` 백업 |
+| `db` | PostgreSQL + PostGIS, 매일 `pg_dump` 백업(미구현, 추후 추가) |
 | `redis` | 큐 브로커·캐시·잠금 |
 | `titiler` | COG 타일 서버, COG 아카이브 볼륨 읽기 전용 마운트 |
 | `vllm` | 선택(compose profile, NVIDIA GPU가 있을 때). 기본은 호스트에서 도는 로컬 Ollama |
+
+`DEMO_MODE=True`면 `demo/fixtures/demo_snapshots.json`에 등록한 건물은 GPU·외부 API 없이 고정된 insight·리포트를 돌려준다(시연용). 프론트엔드 컨테이너는 아직 없다.
 
 ### 9-5. 테스트
 
@@ -689,7 +704,7 @@ A0, A6·A7(특수지, PNU에 포함), A10, A19, A21, A23, A28은 적재하지 �
 
 | 레이어 | 그룹 | 출처 | 형식 | 기본 표시 |
 | --- | --- | --- | --- | --- |
-| 배경지도 | 기본 | OpenStreetMap(일반 지도) / 항공사진 영상지도 API(건물 확대, 줌 16 이상 기본, 10-5) | 래스터 타일 | 켜짐 |
+| 배경지도 | 기본 | OpenStreetMap(일반 지도) / 항공사진 영상지도 API(건물 확대, 줌 16 이상 기본, 10-5. 아직 레이어 등록 전) | 래스터 타일 | 켜짐 |
 | 건물 풋프린트 | 기본 | 자체(PostGIS) | 벡터 타일 | 켜짐 |
 | 내 표시 건물(즐겨찾기·색상·라벨·메모) | 내 건물 | 자체(`user_building`), 로그인 사용자 본인 것만 | GeoJSON | 로그인 시 켜짐 |
 | 분석 반경(500m·1km) | 분석 | 자체 | GeoJSON | 건물 선택 시 |
@@ -698,6 +713,8 @@ A0, A6·A7(특수지, PNU에 포함), A10, A19, A21, A23, A28은 적재하지 �
 | Before/After 위성 영상 | 개발 | 자체 COG → TiTiler(동네 단위, 10-5) | 래스터 타일(스와이프) | 꺼짐 |
 | 실거래 위치 | 시세 | 자체(`trade`) | GeoJSON 포인트 | 꺼짐 |
 | 범죄주의구간(전체) | 안전 | 생활안전지도 WMS `A2SM_CRMNLHSPOT_TOT` | 외부 WMS(중계) | 꺼짐 |
+
+‘개발 변화 구역’은 건물별 `insight.change.areas`로만 주고, ‘실거래 위치’는 지도 범위로 거래 지점을 돌려주는 API가 아직 없어 레이어 정의만 있다(프론트 개발 때 추가).
 
 2단계 후보는 범죄주의구간 유형별(살인·강도·성폭력·절도·폭력) 레이어와, 생활안전지도의 다른 치안·교통 레이어다. 같은 WMS 서비스의 레이어는 레지스트리 행만 추가하면 된다.
 
@@ -713,6 +730,8 @@ A0, A6·A7(특수지, PNU에 포함), A10, A19, A21, A23, A28은 적재하지 �
 | `notice` | 레이어와 함께 표시할 고지. 범죄주의구간은 범례 JSON의 `WARN` 문구 그대로 |
 | `attribution` | 출처 표기(예: 경찰청·생활안전지도, Copernicus Sentinel) |
 | `synced_at` | `레이어 정보를 마지막으로 갱신한 시각(seed_map_layers, 위성 레이어는 catalog_publish 때 갱신. 범례는 고정 파일`) |
+
+이 밖에 `slug`(고정 식별자. `seed_map_layers`가 이 값으로 행을 찾아 덮어쓴다)와 `kind`(`background` · `analysis`)가 있다. `/api/layers` 응답의 `source_params.regions`에는 지역별 타일 주소·계절·출처가 목록으로 들어간다(위성 레이어인 녹지 마스크·Before/After만 채워지고 나머지는 빈 목록).
 
 ### 10-3. 외부 WMS 중계
 
@@ -749,7 +768,7 @@ A0, A6·A7(특수지, PNU에 포함), A10, A19, A21, A23, A28은 적재하지 �
 
 | 역할 | 데이터 | 표시 범위 |
 | --- | --- | --- |
-| 건물 확대 배경 | 항공사진 영상지도 API(브이월드 또는 국토지리정보원 WMTS). | 줌 16 이상 기본 배경, 사용자가 일반 지도와 전환 |
+| 건물 확대 배경 | 항공사진 영상지도 API(브이월드 또는 국토지리정보원 WMTS). | 줌 16 이상 기본 배경, 사용자가 일반 지도와 전환(예정: 아직 레이어 등록 전) |
 | 녹지율·변화 계산 | Sentinel-2(10m) | 계산에만 사용 |
 | 위성 레이어(트루컬러, 녹지 마스크) | Sentinel-2 COG | 줌 15 이하 보조 레이어, 레이어 이름에 ‘10m 해상도’ 표시 |
 | Before/After | Sentinel-2 트루컬러(같은 계절끼리) | 동네 단위. 변화 구역을 누르면 그 구역의 전후 영상을 보여준다 |
@@ -799,5 +818,4 @@ A0, A6·A7(특수지, PNU에 포함), A10, A19, A21, A23, A28은 적재하지 �
 
 ### 11-5. 남은 한계
 
-- 지도 레이어(녹지 마스크·트루컬러)는 지역 하나의 COG만 가리킨다. 지역이 둘 이상이면 지역별 목록이 필요하다. ‘개발 프롬프트’ 탭 8-2(후속 작업)에서 /api/layers가 지역별 타일 주소 목록을 돌려주도록 고친다.
 - 위성 격자는 UTM 52존(EPSG:32652) 기준이라, 동경 126° 서쪽(백령도, 신안 섬 등)은 거리 왜곡이 커진다. 내륙은 문제없다.

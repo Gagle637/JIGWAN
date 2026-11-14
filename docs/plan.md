@@ -73,13 +73,13 @@ MVP는 사용자 기능 여섯 가지(F1–F6)와 이를 받치는 위성 분석
 
 ## 4. 데이터 소스 명세
 
-모든 데이터는 스케줄러가 정해진 주기로 미리 수집해 DB에 적재하며, 사용자 조회 시 분석용 외부 API를 호출하지 않는다(배경지도와 외부 WMS 레이어 타일만 실시간 중계). 데이터는 PNU(19자리 필지고유번호)와 건물 좌표로 묶인다. PNU에서 법정동코드·본번·부번을 분해해 건축물대장을, 시군구코드(앞 5자리)로 실거래가를 연결한다.
+모든 데이터는 스케줄러가 정해진 주기로 미리 수집해 DB에 적재하며, 사용자 조회 시 분석용 외부 API를 호출하지 않는다(배경지도와 외부 WMS 레이어 타일만 실시간 중계). 데이터는 PNU(19자리 필지고유번호)와 건물 좌표로 묶인다. 건물 폴리곤과 건축물대장 속성은 한 파일(GIS건물통합정보)에 PNU와 함께 들어 있고, 실거래는 시군구코드(앞 5자리)로 수집한 뒤 지번으로 PNU를 맞춰 건물에 연결한다.
 
 | 구분 | 데이터 항목 | 출처 / 수집 방식 | 연결 키 | 수집 주기(스케줄) |
 | --- | --- | --- | --- | --- |
 | 위성 | Sentinel-2 L2A(광학, 10–20m), Sentinel-1 GRD(SAR, 2단계) | CDSE STAC API 검색 → 대상 지역 범위만 COG로 잘라 아카이브 | 지역 범위, MGRS 타일 | 5일(재방문 주기)마다 신규 장면 수집, 계절 종료 후 합성 |
-| 건물 풋프린트 | 건물 폴리곤 175,270동 + 건축물대장 표제부 속성(용도·면적·사용승인일·층수 등) | 브이월드 GIS건물통합정보(AL\_D010) 대전 파일(EPSG:5186, CP949, 확보 완료 → PostGIS 적재 | PNU, 건물 ID | 새 파일을 받을 때(수동) |
-| 건축물대장 | 용도, 대지면적, 연면적, 건폐율, 용적률, 사용승인일, 세대수 | MVP는 GIS건물통합정보에 붙은 속성 사용. 세대수·총괄표제부가 필요하면 2단계에 세움터 파일 추가 | 시군구·법정동 코드 + 번·지 | 건물 파일과 함께(새 파일을 받을 때 수동) |
+| 건물 풋프린트 | 건물 폴리곤 175,270동 + 건축물대장 표제부 속성(용도·면적·사용승인일·층수 등) | 브이월드 GIS건물통합정보(AL\_D010) 대전 파일(EPSG:5186, CP949, 확보 완료) → PostGIS 적재 | PNU, 건물 ID | 새 파일을 받을 때(수동) |
+| 건축물대장 | 용도, 대지면적, 연면적, 건폐율, 용적률, 사용승인일, 층수(세대수는 MVP 제외) | MVP는 GIS건물통합정보에 붙은 속성 사용. 세대수·총괄표제부가 필요하면 2단계에 세움터 파일 추가 | PNU(건물 파일에 함께 들어 있음) | 건물 파일과 함께(새 파일을 받을 때 수동) |
 | 실거래가 | 아파트·오피스텔·연립다세대·단독다가구 매매 및 전월세 | 공공데이터포털 국토부 실거래가 API | 시군구코드 + 계약월, 지번으로 PNU 매칭 | 일 1회(당월·전월 재수집) |
 | 생활안전 | 범죄주의구간(전체) 밀도 구역별 등급 GRAD(10단계, 경찰청 밀도분석) | 생활안전지도 WMS GetFeatureInfo(2km 구역 단위 호출 → 밀도 구역 geometry 저장) | 밀도 구역 geometry | 연 1회 |
 | 베이스맵·경계 | 배경지도, 시군구·법정동 경계 | OSM 타일(일반 지도) + 항공사진 영상지도 API(브이월드 또는 국토지리정보원, 건물 확대용), 브이월드 법정구역정보(AL\_D001: 시군구·읍면동 SHP, 시도는 시군구를 합쳐 생성, 법정동 코드 기준. SGIS 행정동 경계는 코드 체계가 달라 쓰지 않음) | 행정구역 코드 | 배경지도는 실시간 타일, 경계는 연 1회 적재 |
@@ -141,7 +141,7 @@ MVP는 사용자 기능 여섯 가지(F1–F6)와 이를 받치는 위성 분석
 
 ### 5-5. 건물 스펙·시세 (F4)
 
-GIS건물통합정보에 붙은 건축물대장 속성에서 용도, 대지면적, 연면적, 건폐율, 용적률, 사용승인일(→ 연식), 층수를 정리한다. 속성이 없는 약 30%의 건물(부속·미등재 등)은 ‘대장 정보 없음’으로 표시한다. 실거래는 조회 시 최근 24개월, 같은 주택 유형, 반경 500m 내 거래를 DB에서 모아 월별 ㎡당 단가 중앙값과 거래 건수를 낸다.
+GIS건물통합정보에 붙은 건축물대장 속성에서 용도, 대지면적, 연면적, 건폐율, 용적률, 사용승인일(→ 연식), 층수를 정리한다. 속성이 없는 약 30%의 건물(부속·미등재 등)은 ‘대장 정보 없음’으로 표시한다. 실거래는 조회 시 최근 24개월, 같은 주택 유형, 반경 500m 내 거래를 DB에서 모아 매매 거래의 월별 ㎡당 단가 중앙값과 거래 건수를 낸다(전월세는 수집·저장만 하고 화면 집계에는 아직 넣지 않는다. 단독·다가구는 지번이 가려져 건물 주변 집계에 잡히지 않는다).
 
 ### 5-6. 범죄 안전 진단 (F4)
 
@@ -168,7 +168,7 @@ GIS건물통합정보에 붙은 건축물대장 속성에서 용도, 대지면�
 
 | 영역 | 기술 | 역할 |
 | --- | --- | --- |
-| Frontend | Vue 3 (Composition API), Pinia, Tailwind CSS | 화면, 상태 관리 |
+| Frontend | Vue 3 (Composition API), Pinia, Tailwind CSS | 화면, 상태 관리(아직 미착수. 백엔드를 먼저 끝냈다) |
 | 지도·차트 | OpenLayers, Chart.js | 건물 벡터 타일·클릭·버퍼·스와이프, 분석·안전 레이어, NDVI·실거래 차트 |
 | Backend | Python 3.11+, Django + DRF | REST API(결과 검색·반경 계산), 사용자 인증·리포트·즐겨찾기·메모, 레이어 중계, 관리 명령(CLI) |
 | 스케줄러 | Celery Beat | 잡 주기 실행(위성 5일, 실거래 일 1회, 합성 분기. 건물은 새 파일을 받을 때 수동 적재) |
@@ -198,46 +198,51 @@ GIS건물통합정보에 붙은 건축물대장 속성에서 용도, 대지면�
 
 | Method | Endpoint | 설명 | 응답 요지 |
 | --- | --- | --- | --- |
+| POST | `/api/auth/register` | 회원가입(이메일·비밀번호, 개인정보 수집 동의 필수) | 201, 사용자 id·이메일 |
 | POST | `/api/auth/login`, `/api/auth/refresh` | 로그인·토큰 갱신 | JWT |
+| DELETE | `/api/auth/me` | 회원 탈퇴(리포트·표시·폴더 함께 삭제) | 204 |
 | GET | `/api/buildings/search?q=` | 주소·단지명 검색 | 후보 목록(PNU, 주소, 중심 좌표) |
 | GET | `/api/buildings/at?lon=&lat=` | 클릭 좌표의 건물 조회(ST\_Intersects) | 건물 ID, PNU, 폴리곤 GeoJSON |
+| GET | `/api/tiles/buildings/{z}/{x}/{y}.mvt` | 건물 풋프린트 벡터 타일 | MVT(건물 id 포함) |
 | GET | `/api/buildings/{id}/insight?radius=500` | 반경 계산: 위성 지표·스펙·시세 요약·범죄 | 지표 + 기준일, 로그인 시 내 표시·내 리포트 수 |
 | GET | `/api/buildings/{id}/trades?months=24&type=` | 반경 내 실거래 목록(보류: insight.trades로 대체, 프론트에서 필요할 때 추가) | 거래 목록, 월별 ㎡당 중앙값 |
 | GET | `/api/buildings/{id}/changes` | 반경 내 변화 구역(보류: insight.change로 대체) | 변화 폴리곤 GeoJSON, 면적·시기 |
-| GET | `/api/buildings/{id}/reports` | 이 건물의 내 리포트 목록(최신순) | id·종류·프롬프트 요약·상태·생성일 |
-| POST | `/api/buildings/{id}/reports` | 리포트 생성 요청(`template` 또는 `custom` + 프롬프트) | `report_id`, `status: generating` |
+| GET | `/api/buildings/{id}/reports` | 이 건물의 내 리포트 목록(최신순) | id·종류·프롬프트·상태·생성일 |
+| POST | `/api/buildings/{id}/reports` | 리포트 생성 요청(`template` 또는 `custom` + 프롬프트) | 202, `report_id`, `status: generating` |
 | GET, DELETE | `/api/reports/{report_id}` | 리포트 조회·삭제(본인 것만) | 리포트 JSON 또는 `generating` |
 | PUT, DELETE | `/api/buildings/{id}/mark` | 즐겨찾기·폴더·색상·라벨·메모 저장·해제 | 저장된 값 |
-| GET | `/api/me/buildings?bbox=`&folder\_id= | 내가 표시한 건물(지도 레이어용) | GeoJSON(폴리곤, 즐겨찾기, 색상, 라벨) |
-| GET | `/api/products?type=&from=&to=&bbox=` | 결과 카탈로그 검색(보류: 프론트에서 필요할 때 추가) | 결과 목록(종류, 기간, bbox, 타일 주소) |
-| GET | `/api/layers`, `/api/layers/{id}/tiles/{z}/{x}/{y}.png` | 레이어 목록, 외부 WMS 중계 | 레이어 설정, PNG 타일 |
-| GET | `{TITILER_PUBLIC_URL}/cog/tiles/WebMercatorQuad/{z}/{x}/{y}.png?url=` | TiTiler 다이내믹 타일(녹지 마스크, Before/After) | PNG 타일 |
-| GET, POST | `/api/admin/index-runs` | 배치 실행 이력·수동 재실행(보류: 관리 명령과 Django 관리자 화면으로 대체) | 잡·지역·상태, `run_id` |
+| GET | `/api/me/buildings?bbox=&folder_id=` | 내가 표시한 건물(지도 레이어용) | GeoJSON(폴리곤, 즐겨찾기, 색상, 라벨) |
 | GET, POST | `/api/me/favorites` | 내 즐겨찾기 폴더 트리 조회·폴더 생성 | 폴더 트리 JSON, 새 폴더 id |
 | PATCH, DELETE | `/api/me/favorites/{folder_id}` | 이름·색상·숨김 변경, 다른 폴더로 이동·순서 변경, 삭제 | 변경된 폴더 |
 | POST | `/api/me/favorites/{folder_id}/buildings` | 여러 건물을 한 번에 폴더로 이동 | 이동된 건물 수 |
+| GET | `/api/layers`, `/api/layers/{id}/tiles/{z}/{x}/{y}.png` | 레이어 목록, 외부 WMS 중계 | 레이어 설정, PNG 타일 |
+| GET | `{TITILER_PUBLIC_URL}/cog/tiles/WebMercatorQuad/{z}/{x}/{y}.png?url=` | TiTiler 다이내믹 타일(녹지 마스크, Before/After). API 서버가 아니라 TiTiler가 직접 응답 | PNG 타일 |
+| GET | `/api/products?type=&from=&to=&bbox=` | 결과 카탈로그 검색(보류: 프론트에서 필요할 때 추가) | 결과 목록(종류, 기간, bbox, 타일 주소) |
+| GET, POST | `/api/admin/index-runs` | 배치 실행 이력·수동 재실행(보류: 관리 명령과 Django 관리자 화면으로 대체) | 잡·지역·상태, `run_id` |
+| GET | `/api/health` | 상태 확인(DB·Redis 연결) | 200 또는 503 |
+| GET | `/api/docs/`, `/api/schema/` | API 문서(Swagger, drf-spectacular) | HTML, OpenAPI |
 
 ### 8-2. 핵심 테이블 (PostgreSQL + PostGIS)
 
 | 테이블 | 주요 컬럼 | 채우는 곳 |
 | --- | --- | --- |
-| `building` | id, building\_key(고정 키), gis\_bldg\_id, pnu, bjd\_code, jibun, name, dong\_name, use\_name, structure, building\_area\_m2, total\_floor\_area\_m2, land\_area\_m2, approval\_date, height\_m, bcr\_pct, far\_pct, floors\_above, floors\_below, source\_date, is\_active, geom(Polygon, 4326) | 건물 적재(새 파일을 받을 때 수동) |
-| `satellite_scene` | scene\_id, region\_code, sensed\_at, mgrs\_tile, cloud\_pct, processing\_baseline, status, cog\_path, scl\_cog\_path, 유일(scene\_id, region\_code) | 위성 수집 |
-| `raster_product` | id, region\_code, product\_type(ndvi·ndbi·green\_mask·truecolor·change\_mask), period\_start, period\_end, season, compare\_period(변화만), bbox(Polygon, 4326), crs, resolution\_m, cog\_path, algo\_version, scene\_ids, is\_published | 계절 합성·변화 분석 |
+| `building` | id, building\_key(고정 키), gis\_bldg\_id, pnu, bjd\_code, bjd\_name, jibun, name, dong\_name, use\_code, use\_name, structure, building\_area\_m2, total\_floor\_area\_m2, land\_area\_m2, approval\_date, height\_m, bcr\_pct, far\_pct, is\_violation, floors\_above, floors\_below, source\_date, is\_active, geom(Polygon, 4326) | 건물 적재(새 파일을 받을 때 수동) |
+| `satellite_scene` | id, scene\_id, region\_code, sensed\_at, mgrs\_tile, cloud\_pct, processing\_baseline, band\_offsets, boa\_quantification\_value, valid\_ratio, status(listed·ready·excluded·failed·superseded), cog\_path, scl\_cog\_path, error, collected\_at, 유일(scene\_id, region\_code) | 위성 수집 |
+| `raster_product` | id, region\_code, product\_type(ndvi·ndbi·green\_mask·truecolor·change\_mask), year, season, period\_start, period\_end, compare\_period(변화만), bbox(Polygon, 4326), crs, resolution\_m, cog\_path, algo\_version, scene\_ids, valid\_ratio, is\_published, composited\_at | 계절 합성·변화 분석 |
 | `change_area` | id, product\_id, period, area\_m2, delta\_ndbi, delta\_ndvi, geom(Polygon, 4326) | 변화 분석 |
 | `region_stat` | region\_code(→ region), product\_id, green\_ratio | 지역 기준선 |
-| `parcel_register` | MVP 제외. 세대수·총괄표제부가 필요해지면 세움터 파일로 추가(2단계) | 공공데이터 동기화 |
-| `trade` | id, sgg\_code, pnu, house\_type, deal\_type, deal\_ym, area\_m2, price, deposit, monthly\_rent, geom(Point, 4326) | 공공데이터 동기화 |
+| `parcel_register` | MVP 제외(테이블 없음). 세대수·총괄표제부가 필요해지면 세움터 파일로 추가(2단계) | 공공데이터 동기화 |
+| `trade` | id, sgg\_code, pnu, house\_type, deal\_type, deal\_ym, deal\_day, area\_m2, price, deposit, monthly\_rent, apt\_seq, building\_name, floor, build\_year, is\_canceled, canceled\_at, match\_failure\_reason, raw\_bjd\_name, raw\_jibun, geom(Point, 4326: 매칭된 필지의 건물 중심점) | 공공데이터 동기화 |
 | `crime_segment` | objt\_id, grad, data\_period, geom(MultiPolygon, 4326) | 범죄주의구간 수집 |
 | `crime_fetch_progress` | cell\_id, region\_code, status, feature\_count, fetched\_at, 유일(cell\_id, region\_code) | 범죄주의구간 수집(중단 후 이어하기) |
-| `map_layer` | 레이어 레지스트리(기술 명세 10-2) | 수동 등록, `safety_sync` |
-| `user` | accounts.User(AbstractUser 상속, email 고유·로그인 식별자), AUTH\_USER\_MODEL로 지정 | 회원가입 |
+| `map_layer` | 레이어 레지스트리(기술 명세 10-2) | `seed_map_layers` 명령, `catalog_publish`(위성 레이어의 지역별 타일 주소 갱신) |
+| `user` | accounts.User(AbstractUser 상속, email 고유·로그인 식별자, privacy\_consent\_at), AUTH\_USER\_MODEL로 지정 | 회원가입 |
 | `user_building` | user\_id, building\_id, is\_favorite, folder\_id, color, label(20자 이내), memo, updated\_at, unique(user\_id, building\_id) | 즐겨찾기·메모 저장 |
 | `report` | id, user\_id, building\_id, radius\_m, report\_type(template·custom), template\_version, user\_prompt, input\_snapshot(JSONB), model, prompt\_version, payload(JSONB), status, created\_at | 사용자 요청 시 생성 |
 | `index_run` | id, job, region\_code, status, started\_at, finished\_at, error | 모든 잡(실행 기록) |
 | `favorite_folder` | id, user\_id, parent\_id(자기 참조), name, color, is\_hidden, sort\_order, created\_at | 즐겨찾기 폴더 관리 |
 | `region` | region\_code(PK: 시도 2자리·시군구 5자리·법정동 10자리), level(sido·sigungu·bjd), name, parent\_code(자기 참조), geom(MultiPolygon, 4326), source\_date | 행정경계 적재(buildings 앱) |
-| `service_area` | sido\_code(PK), name, enabled, grid(EPSG:32652), bbox(4326), added\_at | 서비스 지역 목록(core 앱, areas 명령). 기술 명세 11장 |
+| `service_area` | sido\_code(PK), name, enabled, grid(JSON, EPSG:32652), bbox\_minx·bbox\_miny·bbox\_maxx·bbox\_maxy(4326), added\_at | 서비스 지역 목록(core 앱, areas 명령). 기술 명세 11장 |
 
 반경 계산 결과는 (건물, 반경, 사용한 `raster_product` id 목록)을 키로 캐시해 사용자 간에 공유한다. 리포트는 사용자별로 따로 만들고, 생성 당시의 입력(`input_snapshot`)과 프롬프트를 함께 저장해 나중에 데이터가 갱신돼도 어떤 데이터로 만든 리포트인지 추적할 수 있게 한다.
 
@@ -249,6 +254,8 @@ MVP는 1인 개발 기준 9주로 잡고, 시범 지역인 대전광역시에서
 
 기간은 제안값이다. 위성 분석이 밀리면 P3를 먼저 진행하고 녹지·변화 항목을 ‘준비 중’으로 두어도 리포트 흐름은 시연할 수 있다.
 
+현재 상태(2026-11-14): 백엔드(배치, 조회 API, 리포트, 즐겨찾기, 레이어, 다지역 구조)는 구현을 마쳤고 테스트 542건이 통과한다. 남은 일은 대전 위성 백필 마무리와 프론트엔드 개발이다.
+
 ## 10. 리스크와 대응
 
 가장 큰 리스크는 ‘배치 처리 시간·용량’, ‘여름철 구름’, ‘조회 시 계산 지연’이며, 지역 단위 저장·계절 합성·결과 캐시로 대응한다.
@@ -258,11 +265,11 @@ MVP는 1인 개발 기준 9주로 잡고, 시범 지역인 대전광역시에서
 | 장마철(6–9월) 구름으로 유효 장면 부족 | 여름 NDVI 결측, 변화 감지 오탐 | SCL 마스킹 + 계절 중앙값 합성, 장면 수 부족 시 ‘데이터 부족’ 표기, 2단계에 Sentinel-1 보완 |
 | 배치 처리 시간·저장 용량 증가 | 결과 갱신 지연, 디스크 부족 | 대전 범위만 잘라 저장, 합성 후 원본 장면 보관 기간 제한, 잡 단위 병렬화 |
 | 조회 시 계산 지연 | 수치 표시가 느려짐 | COG 로컬 저장·반경 창 읽기, 결과 캐시, P2에서 응답 시간 측정 |
-| 배치 실패의 연쇄 | 하위 단계 결과 누락 | `index_run` 기록, 실패 단계부터 재시작, 실패 알림, 이전 결과 유지 |
+| 배치 실패의 연쇄 | 하위 단계 결과 누락 | `index_run` 기록, 실패 단계부터 재시작, 이전 결과 유지(실패 알림은 아직 없어 관리자 화면과 areas status로 확인) |
 | 결과 최신성 | 사용자가 지난 계절 결과를 현재로 오해 | 지표마다 위성 촬영 기간·데이터 기준일 표기 |
 | 10–20m 해상도의 한계 | 작은 공원·가로수, 소규모 공사 미탐지 | 최소 탐지 면적(0.1ha) 명시, ‘대규모 변화 감지’로 표현 범위 제한 |
 | 변화 감지가 ‘호재’를 보장하지 않음 | 사용자 오해 | ‘개발 징후’로 표현, 뉴스 등 보조 근거는 추가개발에서 보강 |
-| 실거래가 지번 ↔ 건물 매칭 실패 | 해당 건물 거래 누락 | 법정동+지번 → PNU 변환, 실패 건은 단지명 유사도 매칭, 매칭률 모니터링 |
+| 실거래가 지번 ↔ 건물 매칭 실패 | 해당 건물 거래 누락 | 법정동+지번 → PNU 변환, 아파트 전월세는 단지 일련번호(aptSeq)로 연결, 실패 건은 사유와 함께 남겨 유형별 매칭률 모니터링(단지명 유사도 매칭은 미구현) |
 | 공공 API 호출 한도·장애 | 동기화 누락 | 야간 배치로 분산 호출, 실패 건 재시도 큐 |
 | gpt-oss 한국어 품질 | 어색한 문장, 용어 오류 | 한국어 few-shot 예시·용어 사전 고정, 20b↔120b 샘플 50건 비교 후 선택 |
 | LLM 환각·단정적 투자 조언 | 신뢰도·법적 리스크 | JSON 스키마 강제, 근거 키 검증(없는 키 인용 시 재생성), 권유·‘위험’ 문구 금지, 고지 문구 |
@@ -281,9 +288,8 @@ MVP는 1인 개발 기준 9주로 잡고, 시범 지역인 대전광역시에서
 | 지표 | 목표(MVP) | 측정 방법 |
 | --- | --- | --- |
 | 건물 클릭 → 수치 표시 | 2초 이내 | `insight` 응답 시간 p90 |
-| 리포트 생성 | 30초 이내(기본 템플릿 기준) | 생성 요청–완료 시간 p90 |
+| 리포트 생성 | GPU 서빙(vLLM) 기준 30초 이내. 기본값인 로컬 Ollama(CPU)는 수 분(실측 약 12.6토큰/초, 제한 시간 480초) | 생성 요청–완료 시간 p90 |
 | 결과 카탈로그 커버리지 | 대전 전역, 13개 계절 100% | 계절별 결과 bbox가 대전 경계를 덮는지 확인 |
 | 배치 1회 처리 시간(대전 전체) | P2에서 측정 후 확정 | `index_run` 시작–종료 시간 |
-| 개발 변화 감지 정밀도 | 80% 이상 | 알려진 공사 현장 30곳 수작업 검증 |
 | 실거래가 건물 매칭률 | 아파트 95%, 오피스텔·연립 90%(단독·다가구 제외) | 매칭 성공 건수 / 전체 거래 건수 |
 | 리포트 근거 오류 | 0건 | 근거 키 자동 검증 + 샘플 50건 검토 |

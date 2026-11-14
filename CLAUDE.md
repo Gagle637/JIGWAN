@@ -8,7 +8,8 @@ docs/spec.md(기술 명세)가 기준이다. 설계와 다르게 구현해야 �
 - Raster: rasterio, numpy, geopandas, shapely, pystac-client
 - Tiles: TiTiler(Docker)
 - LLM: gpt-oss-20b, OpenAI 호환 API. 기본은 로컬 Ollama, vLLM은 선택(GPU 있을 때). base_url은 환경 변수
-- Frontend: Vue 3(Composition API) + Pinia + Tailwind, OpenLayers, Chart.js
+- Frontend: Vite + React + TypeScript, Tailwind CSS(v4, `@tailwindcss/vite`), Zustand(화면 상태),
+  TanStack Query(서버 데이터), React Router, OpenLayers, Chart.js(react-chartjs-2). 패키지 매니저 npm
 - 실행: docker compose
 
 ## 반드시 지킬 규칙
@@ -26,6 +27,25 @@ docs/spec.md(기술 명세)가 기준이다. 설계와 다르게 구현해야 �
 - API 키, CDSE S3 키, JWT 서명 키는 .env로만 넣고 커밋하지 않는다.
 - 테이블·컬럼·API 경로 이름은 docs/spec.md, docs/plan.md의 이름을 그대로 쓴다.
 
+## 프론트엔드 규칙
+- 라우팅은 React Router. 지도 화면이 `/`, 로그인·회원가입·마이페이지는 별도 경로. 공통 레이아웃
+  라우트 아래에 페이지를 두는 구조(페이지를 늘릴 수 있게). 없는 경로는 `/`로 보낸다.
+- 서버 데이터는 TanStack Query로만 다룬다. Zustand에는 화면 상태(선택한 건물, 반경, 레이어
+  켜짐, 패널 열림 등)만 둔다.
+- API 응답 형태는 추측하지 않는다. backend의 해당 뷰 코드와 docs/spec.md 6장으로 확인해서
+  `frontend/src/api/types.ts`에 타입으로 적는다.
+- 반경 도형은 직접 그리지 않는다. `insight.radius_geometry`를 그대로 그린다.
+- 좌표: API 입출력은 EPSG:4326, 지도 표출은 EPSG:3857.
+- 문구: '위험', '안전'이라고 쓰지 않는다. 범죄는 '최근 1년 범죄 발생 밀도 등급'(데이터 없으면
+  '주의구간 미지정'), 개발 변화는 '개발 징후'. 값이 없는 항목은 숨기지 말고 '데이터 없음'과
+  사유를 보여준다.
+- 지표·리포트 옆에는 데이터 기준일(`as_of`)과 '투자 자문이 아닌 참고 정보' 고지를 둔다.
+- 레이어를 켜면 그 레이어의 출처(attribution)와 고지(notice)가 함께 보여야 한다.
+- 디자인은 Tailwind 기본으로 절제해서 만든다. UI 라이브러리·디자인 시스템은 먼저 묻지 않고
+  추가하지 않는다.
+- `backend/`, `docs/`는 프론트엔드 작업에서 수정하지 않는다. API가 부족하거나 문서와 다르면
+  고치지 말고 보고한다.
+
 ## 작업 방식
 - 단계마다 계획(만들 파일, 마이그레이션, 테스트)을 먼저 보여주고 승인 후 구현한다.
 - 외부 API(CDSE, 실거래, 생활안전지도, LLM)는 테스트에서 녹화한 응답으로 목 처리한다.
@@ -39,7 +59,8 @@ docs/spec.md(기술 명세)가 기준이다. 설계와 다르게 구현해야 �
 backend/   Django 프로젝트(config/) + 앱: buildings, satellite, publicdata, crime,
            reports, accounts, favorites, layers, core, demo
 backend/prompts/  리포트 LLM 프롬프트 템플릿
-frontend/  Vue 앱(예정, 아직 착수 안 함)
+frontend/  Vite+React+TS 앱. src/api(client.ts·types.ts), src/routes(RootLayout·router),
+           src/pages, src/stores(Zustand, 화면 상태)
 docker/    compose·이미지 설정
 data/raw/  원본 파일(git 제외)
 docs/      plan.md, spec.md

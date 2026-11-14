@@ -21,9 +21,14 @@ export class ApiError extends Error {
   }
 }
 
-function parseErrorBody(text: string): { code?: string; message?: string } | null {
+interface ApiErrorBody {
+  code?: string;
+  message?: string;
+}
+
+function parseErrorBody(text: string): ApiErrorBody | null {
   try {
-    const body = JSON.parse(text) as { error?: { code?: string; message?: string } };
+    const body = JSON.parse(text) as { error?: ApiErrorBody };
     return body.error ?? null;
   } catch {
     return null;
@@ -36,16 +41,42 @@ async function toApiError(response: Response): Promise<ApiError> {
   if (error?.code && error?.message) {
     return new ApiError(error.code, error.message, response.status);
   }
-  return new ApiError('UNKNOWN', text || response.statusText, response.status);
+  return new ApiError('UNKNOWN', '서버 오류가 발생했습니다.', response.status);
 }
 
-export async function apiFetch<T>(path: string, init?: RequestInit): Promise<T> {
-  const headers = new Headers(init?.headers);
-  if (init?.body !== undefined) {
+function buildUrl(path: string, params?: ApiFetchOptions['params']): string {
+  const url = resolveApiUrl(path);
+  if (!params) return url;
+  const query = new URLSearchParams();
+  for (const [key, value] of Object.entries(params)) {
+    if (value !== undefined) query.set(key, String(value));
+  }
+  const queryString = query.toString();
+  return queryString ? `${url}?${queryString}` : url;
+}
+
+export interface ApiFetchOptions {
+  method?: string;
+  json?: unknown;
+  params?: Record<string, string | number | boolean | undefined>;
+  signal?: AbortSignal;
+}
+
+export async function apiFetch<T>(path: string, options: ApiFetchOptions = {}): Promise<T> {
+  const { method, json, params, signal } = options;
+  const headers = new Headers();
+  const body = json !== undefined ? JSON.stringify(json) : undefined;
+  if (body !== undefined) {
     headers.set('Content-Type', 'application/json');
   }
 
-  const response = await fetch(resolveApiUrl(path), { ...init, headers });
+  let response: Response;
+  try {
+    response = await fetch(buildUrl(path, params), { method, headers, body, signal });
+  } catch (cause) {
+    if (cause instanceof DOMException && cause.name === 'AbortError') throw cause;
+    throw new ApiError('NETWORK', '서버에 연결할 수 없습니다.', 0);
+  }
 
   if (!response.ok) {
     throw await toApiError(response);

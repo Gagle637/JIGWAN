@@ -1,5 +1,6 @@
 import { resolveApiUrl } from '@/api/fetch';
-import type { MapLayer } from '@/api/types';
+
+import type { MapLayer } from './types';
 
 const minZoomEpsilon = 0.0001;
 
@@ -20,10 +21,11 @@ export function isAboveMinZoom(currentZoom: number, minZoom: number | null): boo
   return currentZoom > olMinZoom;
 }
 
-export function toTileLayerOptions(layer: MapLayer): TileLayerOptions {
-  const rawUrl = typeof layer.source_params.url === 'string' ? layer.source_params.url : '';
+type TiledMapLayer = Extract<MapLayer, { source_type: 'raster_tile' | 'vector_tile' }>;
+
+export function toTileLayerOptions(layer: TiledMapLayer): TileLayerOptions {
   return {
-    url: resolveApiUrl(rawUrl),
+    url: resolveApiUrl(layer.source_params.url),
     attributions: layer.attribution,
     minZoom: toOlMinZoom(layer.min_zoom),
   };

@@ -3,17 +3,21 @@ import { useEffect } from 'react';
 import TileLayer from 'ol/layer/Tile';
 import XYZ from 'ol/source/XYZ';
 
-import { useLayersQuery } from '@/api/layers';
-import type { MapLayer } from '@/api/types';
+import { toTileLayerOptions } from '@/features/map/layerSource';
+import { useLayersQuery } from '@/features/map/queries';
+import type { MapLayer } from '@/features/map/types';
+import { backgroundZIndexBase } from '@/features/map/zIndex';
 
-import { toTileLayerOptions } from './layerSource';
 import { useMapInstance } from './mapContext';
-import { backgroundZIndexBase } from './zIndex';
 
-function selectBackgroundRasterLayers(layers: MapLayer[]): MapLayer[] {
-  return layers
-    .filter((layer) => layer.kind === 'background' && layer.source_type === 'raster_tile')
-    .sort((a, b) => a.order - b.order);
+function isBackgroundRasterLayer(
+  layer: MapLayer,
+): layer is Extract<MapLayer, { source_type: 'raster_tile' }> {
+  return layer.kind === 'background' && layer.source_type === 'raster_tile';
+}
+
+function selectBackgroundRasterLayers(layers: MapLayer[]) {
+  return layers.filter(isBackgroundRasterLayer).sort((a, b) => a.order - b.order);
 }
 
 export function BackgroundLayer() {

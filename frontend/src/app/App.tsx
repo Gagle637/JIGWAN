@@ -3,7 +3,7 @@ import { RouterProvider } from 'react-router-dom';
 
 import { ApiError } from '@/api/fetch';
 
-import { router } from './routes/router';
+import { router } from './router';
 
 const queryClient = new QueryClient({
   defaultOptions: {

@@ -1,11 +1,12 @@
-import { useQuery, type UseQueryResult } from '@tanstack/react-query'
-import { apiFetch } from '@/api/fetch'
-import type { MapLayer } from '@/api/types'
+import { useQuery, type UseQueryResult } from '@tanstack/react-query';
 
-export const layersQueryKey = ['layers'] as const
+import { apiFetch } from '@/api/fetch';
+import type { MapLayer } from '@/api/types';
+
+export const layersQueryKey = ['layers'] as const;
 
 export function fetchLayers(): Promise<MapLayer[]> {
-  return apiFetch<MapLayer[]>('/api/layers')
+  return apiFetch<MapLayer[]>('/api/layers');
 }
 
 export function useLayersQuery<T = MapLayer[]>(
@@ -16,5 +17,5 @@ export function useLayersQuery<T = MapLayer[]>(
     queryFn: fetchLayers,
     staleTime: 30 * 60 * 1000,
     select,
-  })
+  });
 }

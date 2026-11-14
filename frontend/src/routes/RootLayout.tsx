@@ -1,7 +1,12 @@
-import { NavLink, Outlet } from 'react-router-dom'
+import { NavLink, Outlet } from 'react-router-dom';
+
+import { cn } from '@/lib/cn';
 
 const navLinkClass = ({ isActive }: { isActive: boolean }) =>
-  `px-3 py-1.5 text-sm rounded-md ${isActive ? 'bg-slate-900 text-white' : 'text-slate-600 hover:bg-slate-100'}`
+  cn(
+    'rounded-md px-3 py-1.5 text-sm',
+    isActive ? 'bg-slate-900 text-white' : 'text-slate-600 hover:bg-slate-100',
+  );
 
 export default function RootLayout() {
   return (
@@ -27,5 +32,5 @@ export default function RootLayout() {
         <Outlet />
       </main>
     </div>
-  )
+  );
 }

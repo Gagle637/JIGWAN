@@ -1,5 +1,5 @@
-export type MapLayerSourceType = 'vector_tile' | 'geojson' | 'titiler' | 'wms' | 'raster_tile'
-export type MapLayerKind = 'background' | 'analysis'
+export type MapLayerSourceType = 'vector_tile' | 'geojson' | 'titiler' | 'wms' | 'raster_tile';
+export type MapLayerKind = 'background' | 'analysis';
 
 export interface MapLayerRegion {
   region_code: string

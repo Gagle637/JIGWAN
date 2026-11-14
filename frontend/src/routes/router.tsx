@@ -1,9 +1,11 @@
-import { createBrowserRouter, Navigate } from 'react-router-dom'
-import MapPage from '@/pages/MapPage'
-import LoginPage from '@/pages/LoginPage'
-import SignupPage from '@/pages/SignupPage'
-import MyPage from '@/pages/MyPage'
-import RootLayout from './RootLayout'
+import { createBrowserRouter, Navigate } from 'react-router-dom';
+
+import LoginPage from '@/pages/LoginPage';
+import MapPage from '@/pages/MapPage';
+import MyPage from '@/pages/MyPage';
+import SignupPage from '@/pages/SignupPage';
+
+import RootLayout from './RootLayout';
 
 export const router = createBrowserRouter([
   {
@@ -17,4 +19,4 @@ export const router = createBrowserRouter([
       { path: '*', element: <Navigate to="/" replace /> },
     ],
   },
-])
+]);

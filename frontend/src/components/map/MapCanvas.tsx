@@ -1,10 +1,11 @@
-import { useLayersQuery } from '@/api/layers'
-import MapProvider from './MapProvider'
-import BackgroundLayer from './BackgroundLayer'
-import BuildingLayer from './BuildingLayer'
+import { useLayersQuery } from '@/api/layers';
+
+import BackgroundLayer from './BackgroundLayer';
+import BuildingLayer from './BuildingLayer';
+import MapProvider from './MapProvider';
 
 export default function MapCanvas() {
-  const { isError, refetch } = useLayersQuery()
+  const { isError, refetch } = useLayersQuery();
 
   if (isError) {
     return (
@@ -18,7 +19,7 @@ export default function MapCanvas() {
           다시 시도
         </button>
       </div>
-    )
+    );
   }
 
   return (
@@ -26,5 +27,5 @@ export default function MapCanvas() {
       <BackgroundLayer />
       <BuildingLayer />
     </MapProvider>
-  )
+  );
 }

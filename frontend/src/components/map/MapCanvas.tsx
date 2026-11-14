@@ -1,10 +1,10 @@
 import { useLayersQuery } from '@/api/layers';
 
-import BackgroundLayer from './BackgroundLayer';
-import BuildingLayer from './BuildingLayer';
-import MapProvider from './MapProvider';
+import { BackgroundLayer } from './BackgroundLayer';
+import { BuildingLayer } from './BuildingLayer';
+import { MapProvider } from './MapProvider';
 
-export default function MapCanvas() {
+export function MapCanvas() {
   const { isError, refetch } = useLayersQuery();
 
   if (isError) {

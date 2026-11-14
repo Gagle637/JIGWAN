@@ -2,28 +2,28 @@ export type MapLayerSourceType = 'vector_tile' | 'geojson' | 'titiler' | 'wms' |
 export type MapLayerKind = 'background' | 'analysis';
 
 export interface MapLayerRegion {
-  region_code: string
-  bbox: [number, number, number, number]
-  tile_url: string
-  season: string
-  attribution: string | null
+  region_code: string;
+  bbox: [number, number, number, number];
+  tile_url: string;
+  season: string;
+  attribution: string | null;
 }
 
 export interface MapLayer {
-  id: number
-  slug: string
-  name: string
-  group: string
-  kind: MapLayerKind
-  order: number
-  source_type: MapLayerSourceType
-  source_params: Record<string, unknown> & { regions: MapLayerRegion[] }
-  min_zoom: number | null
-  max_zoom: number | null
-  opacity: number
-  default_visible: boolean
-  legend: { no: number; label: string; color: string }[] | null
-  notice: string | null
-  attribution: string | null
-  synced_at: string | null
+  id: number;
+  slug: string;
+  name: string;
+  group: string;
+  kind: MapLayerKind;
+  order: number;
+  source_type: MapLayerSourceType;
+  source_params: Record<string, unknown> & { regions: MapLayerRegion[] };
+  min_zoom: number | null;
+  max_zoom: number | null;
+  opacity: number;
+  default_visible: boolean;
+  legend: { no: number; label: string; color: string }[] | null;
+  notice: string | null;
+  attribution: string | null;
+  synced_at: string | null;
 }

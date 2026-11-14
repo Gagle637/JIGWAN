@@ -18,6 +18,14 @@ export default defineConfig([
       reactRefresh.configs.vite,
       importX.flatConfigs.recommended,
       importX.flatConfigs.typescript,
+      stylistic.configs.customize({
+        indent: 2,
+        quotes: 'single',
+        semi: true,
+        jsx: true,
+        arrowParens: true,
+        braceStyle: '1tbs',
+      }),
     ],
     languageOptions: {
       ecmaVersion: 2020,
@@ -28,13 +36,7 @@ export default defineConfig([
         typescript: true,
       },
     },
-    plugins: {
-      '@stylistic': stylistic,
-    },
     rules: {
-      '@stylistic/semi': ['error', 'always'],
-      '@stylistic/quotes': ['error', 'single', { avoidEscape: true }],
-      '@stylistic/jsx-quotes': ['error', 'prefer-double'],
       'import-x/order': [
         'error',
         {
@@ -51,6 +53,28 @@ export default defineConfig([
           alphabetize: { order: 'asc', caseInsensitive: true },
         },
       ],
+      'import-x/extensions': [
+        'error',
+        'never',
+        { ts: 'never', tsx: 'never', js: 'never', jsx: 'never' },
+      ],
+      'import-x/no-default-export': 'error',
+      '@typescript-eslint/consistent-type-assertions': [
+        'error',
+        { assertionStyle: 'never' },
+      ],
+    },
+  },
+  {
+    files: ['vite.config.ts', 'eslint.config.js'],
+    rules: {
+      'import-x/no-default-export': 'off',
+    },
+  },
+  {
+    files: ['src/api/fetch.ts'],
+    rules: {
+      '@typescript-eslint/consistent-type-assertions': 'off',
     },
   },
 ]);

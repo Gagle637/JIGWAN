@@ -1,5 +1,5 @@
-import MapCanvas from '@/components/map/MapCanvas';
+import { MapCanvas } from '@/components/map/MapCanvas';
 
-export default function MapPage() {
+export function MapPage() {
   return <MapCanvas />;
 }

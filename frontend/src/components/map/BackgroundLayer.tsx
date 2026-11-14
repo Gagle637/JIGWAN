@@ -16,7 +16,7 @@ function selectBackgroundRasterLayers(layers: MapLayer[]): MapLayer[] {
     .sort((a, b) => a.order - b.order);
 }
 
-export default function BackgroundLayer() {
+export function BackgroundLayer() {
   const map = useMapInstance();
   const { data: layerDefs } = useLayersQuery(selectBackgroundRasterLayers);
 

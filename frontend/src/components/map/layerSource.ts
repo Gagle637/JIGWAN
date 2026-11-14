@@ -4,9 +4,9 @@ import type { MapLayer } from '@/api/types';
 const minZoomEpsilon = 0.0001;
 
 export interface TileLayerOptions {
-  url: string
-  attributions: string | null
-  minZoom?: number
+  url: string;
+  attributions: string | null;
+  minZoom?: number;
 }
 
 export function toOlMinZoom(minZoom: number | null): number | undefined {

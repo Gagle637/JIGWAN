@@ -24,7 +24,7 @@ const buildingStyle = new Style({
   fill: new Fill({ color: 'rgba(0, 0, 0, 0.01)' }),
 });
 
-export default function BuildingLayer() {
+export function BuildingLayer() {
   const map = useMapInstance();
   const { data: layerDef } = useLayersQuery(selectBuildingFootprint);
   const zoom = useMapViewStore((state) => state.zoom);

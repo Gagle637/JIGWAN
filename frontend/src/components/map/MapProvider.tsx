@@ -12,10 +12,10 @@ import { mapContext } from './mapContext';
 import 'ol/ol.css';
 
 interface MapProviderProps {
-  children: ReactNode
+  children: ReactNode;
 }
 
-export default function MapProvider({ children }: MapProviderProps) {
+export function MapProvider({ children }: MapProviderProps) {
   const targetRef = useRef<HTMLDivElement | null>(null);
   const [map, setMap] = useState<Map | null>(null);
 
@@ -33,7 +33,7 @@ export default function MapProvider({ children }: MapProviderProps) {
 
     instance.on('moveend', () => {
       const view = instance.getView();
-      const nextCenter = view.getCenter() as [number, number] | undefined;
+      const nextCenter = view.getCenter();
       const nextZoom = view.getZoom();
       if (nextCenter && nextZoom !== undefined) {
         setView(nextCenter, nextZoom);

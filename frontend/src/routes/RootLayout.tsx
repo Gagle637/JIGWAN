@@ -8,7 +8,7 @@ const navLinkClass = ({ isActive }: { isActive: boolean }) =>
     isActive ? 'bg-slate-900 text-white' : 'text-slate-600 hover:bg-slate-100',
   );
 
-export default function RootLayout() {
+export function RootLayout() {
   return (
     <div className="flex h-screen flex-col">
       <header className="flex items-center justify-between border-b border-slate-200 px-4 py-2">

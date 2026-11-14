@@ -1,11 +1,11 @@
 import { createBrowserRouter, Navigate } from 'react-router-dom';
 
-import LoginPage from '@/pages/LoginPage';
-import MapPage from '@/pages/MapPage';
-import MyPage from '@/pages/MyPage';
-import SignupPage from '@/pages/SignupPage';
+import { LoginPage } from '@/pages/LoginPage';
+import { MapPage } from '@/pages/MapPage';
+import { MyPage } from '@/pages/MyPage';
+import { SignupPage } from '@/pages/SignupPage';
 
-import RootLayout from './RootLayout';
+import { RootLayout } from './RootLayout';
 
 export const router = createBrowserRouter([
   {

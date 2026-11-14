@@ -7,7 +7,7 @@ docs/spec.md(기술 명세)가 기준이다. 설계와 다르게 구현해야 �
 - Backend: Python 3.11, Django + DRF, Celery + Redis(+ django-celery-beat), PostgreSQL 16 + PostGIS
 - Raster: rasterio, numpy, geopandas, shapely, pystac-client
 - Tiles: TiTiler(Docker)
-- LLM: gpt-oss-20b, OpenAI 호환 API(vLLM 또는 로컬 Ollama). base_url은 환경 변수
+- LLM: gpt-oss-20b, OpenAI 호환 API. 기본은 로컬 Ollama, vLLM은 선택(GPU 있을 때). base_url은 환경 변수
 - Frontend: Vue 3(Composition API) + Pinia + Tailwind, OpenLayers, Chart.js
 - 실행: docker compose
 
@@ -32,11 +32,14 @@ docs/spec.md(기술 명세)가 기준이다. 설계와 다르게 구현해야 �
 - 끝나면 실행 방법과 확인 방법(명령어)을 요약한다.
 - 실제 데이터(DB·data/·docker/data/)에 삭제·덮어쓰기를 일으키는 명령은 dry-run 결과를
   먼저 보여주고 사용자 승인 후 실행한다. 스모크 테스트는 테스트 DB나 복사본에서만 한다.
+- 테스트는 운영 폴더(data/, docker/data/ 등)에 파일을 쓰지 않는다.
+- 커밋과 푸시는 사용자가 한다. 작업이 끝나면 git add까지만 하고 커밋 메시지를 추천한다.
 
 ## 디렉터리
 backend/   Django 프로젝트(config/) + 앱: buildings, satellite, publicdata, crime,
-           reports, accounts, favorites, layers
-frontend/  Vue 앱
+           reports, accounts, favorites, layers, core, demo
+backend/prompts/  리포트 LLM 프롬프트 템플릿
+frontend/  Vue 앱(예정, 아직 착수 안 함)
 docker/    compose·이미지 설정
 data/raw/  원본 파일(git 제외)
 docs/      plan.md, spec.md

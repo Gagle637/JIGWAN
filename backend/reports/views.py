@@ -48,6 +48,7 @@ def _serialize_detail(report: Report) -> dict:
         "building_id": report.building_id,
         "radius_m": report.radius_m,
         "report_type": report.report_type,
+        "user_prompt": report.user_prompt,
         "status": report.status,
         "created_at": report.created_at.isoformat(),
     }

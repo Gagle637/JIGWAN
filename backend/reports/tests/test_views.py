@@ -274,6 +274,53 @@ def test_get_report_detail_generating_has_no_result():
 
     assert body["status"] == "generating"
     assert "result" not in body
+    assert body["user_prompt"] is None
+
+
+def test_get_report_detail_includes_user_prompt_for_custom_report():
+    user = _make_user()
+    building = _make_building(
+        building_key="RVBC", gis_bldg_id="RVBC", pnu="3011010300101530050"
+    )
+    report = Report.objects.create(
+        user=user,
+        building=building,
+        radius_m=500,
+        report_type=Report.ReportType.CUSTOM,
+        prompt_version="v1",
+        user_prompt="전세가 대비 월세 수익률이 궁금해요",
+        input_snapshot={},
+        status=Report.Status.GENERATING,
+    )
+    client = _authed(user)
+
+    response = client.get(f"/api/reports/{report.id}")
+    body = response.json()
+
+    assert body["user_prompt"] == "전세가 대비 월세 수익률이 궁금해요"
+
+
+def test_get_report_detail_user_prompt_is_null_for_template_report():
+    user = _make_user()
+    building = _make_building(
+        building_key="RVBD", gis_bldg_id="RVBD", pnu="3011010300101530051"
+    )
+    report = Report.objects.create(
+        user=user,
+        building=building,
+        radius_m=500,
+        report_type=Report.ReportType.TEMPLATE,
+        template_version="v1",
+        input_snapshot={},
+        status=Report.Status.GENERATING,
+    )
+    client = _authed(user)
+
+    response = client.get(f"/api/reports/{report.id}")
+    body = response.json()
+
+    assert body["report_type"] == "template"
+    assert body["user_prompt"] is None
 
 
 def test_get_report_on_another_users_report_returns_403():

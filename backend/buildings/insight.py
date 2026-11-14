@@ -7,6 +7,7 @@ from django.conf import settings
 from django.core.cache import cache
 from django.db import connection
 
+from buildings.radius_sql import building_radius_buffers, round_geojson_coordinates
 from core.models import IndexRun
 from demo.snapshots import apply_demo_overlay, get_demo_snapshot
 from crime.models import CrimeSegment
@@ -145,9 +146,14 @@ def _latest_safety_sync_finished_at():
     return run.finished_at if run else None
 
 
-def build_insight_response(building, radius_m: int) -> dict:
+def build_insight_response(building, radius_m: int, buffers: dict | None = None) -> dict:
     """캐시 가능한 섹션 전부(my 제외, 결정 사항 7-1). 직접 호출하지 말고
-    get_insight_cached/build_insight_for_request를 통해 쓴다."""
+    get_insight_cached/build_insight_for_request를 통해 쓴다.
+
+    buffers를 넘기면(get_insight_cached가 캐시 키 계산에 쓴 버퍼 재사용) 버퍼 쿼리를
+    다시 실행하지 않는다."""
+    if buffers is None:
+        buffers = building_radius_buffers(building.id, radius_m)
     missing = []
 
     if building.use_code is None:
@@ -202,6 +208,7 @@ def build_insight_response(building, radius_m: int) -> dict:
             "geometry": json.loads(building.geom.geojson),
         },
         "radius_m": radius_m,
+        "radius_geometry": round_geojson_coordinates(buffers["buffer_4326"]),
         "as_of": {
             "satellite_period": _satellite_period_str(green),
             "trade_synced_at": trade_synced_at.isoformat() if trade_synced_at else None,
@@ -228,7 +235,8 @@ def _cache_key_for(
     ids_part = ",".join(str(pid) for pid in sorted(product_ids))
     trade_part = trade_synced_at.isoformat() if trade_synced_at else "none"
     safety_part = safety_synced_at.isoformat() if safety_synced_at else "none"
-    return f"insight:{building_id}:{radius_m}:{ids_part}:{trade_part}:{safety_part}"
+    # v2: radius_geometry 필드 추가(3단계) — v1 캐시(필드 없음)와 섞이지 않게 버전을 올린다.
+    return f"insight:v2:{building_id}:{radius_m}:{ids_part}:{trade_part}:{safety_part}"
 
 
 def get_insight_cached(building, radius_m: int) -> dict:
@@ -236,7 +244,8 @@ def get_insight_cached(building, radius_m: int) -> dict:
     캐시 미스일 때만 무거운 계산(build_insight_response)을 한다(결정 사항 7, 닭-달걀 회피).
     crime_segment는 연 1회(safety_sync)만 통째로 바뀌므로, 그 완료 시각도 키에 넣어
     매년 수집이 끝나면 캐시가 자동으로 무효화되게 한다."""
-    product_ids = catalog_product_ids(building, radius_m)
+    buffers = building_radius_buffers(building.id, radius_m)
+    product_ids = catalog_product_ids(building, radius_m, buffers=buffers)
     trade_synced_at = _latest_trade_sync_finished_at()
     safety_synced_at = _latest_safety_sync_finished_at()
     cache_key = _cache_key_for(
@@ -247,7 +256,7 @@ def get_insight_cached(building, radius_m: int) -> dict:
     if cached is not None:
         return cached
 
-    response = build_insight_response(building, radius_m)
+    response = build_insight_response(building, radius_m, buffers=buffers)
     cache.set(cache_key, response, timeout=CACHE_TTL_SECONDS)
     return response
 

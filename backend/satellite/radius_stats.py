@@ -47,10 +47,13 @@ WHERE ca.product_id = ANY(%(product_ids)s)
 """
 
 
-def catalog_product_ids(building, radius_m: int) -> list[int]:
+def catalog_product_ids(building, radius_m: int, buffers: dict | None = None) -> list[int]:
     """캐시 키 계산용 가벼운 조회 — rasterio를 건드리지 않고 카탈로그 id만 모은다
-    (buildings.insight.get_insight_cached가 쓴다, 결정 사항 7)."""
-    buffers = building_radius_buffers(building.id, radius_m)
+    (buildings.insight.get_insight_cached가 쓴다, 결정 사항 7).
+
+    buffers를 넘기면(이미 계산된 버퍼 재사용) 버퍼 쿼리를 다시 실행하지 않는다."""
+    if buffers is None:
+        buffers = building_radius_buffers(building.id, radius_m)
     ids = set()
     for product_type in ("green_mask", "truecolor", "change_mask"):
         ids.update(p.id for p in _search_catalog(product_type, buffers["buffer_4326"]))

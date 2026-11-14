@@ -8,6 +8,8 @@ import json
 from functools import lru_cache
 from pathlib import Path
 
+from buildings.radius_sql import building_radius_buffers, round_geojson_coordinates
+
 FIXTURE_PATH = Path(__file__).resolve().parent / "fixtures" / "demo_snapshots.json"
 
 
@@ -33,4 +35,8 @@ def apply_demo_overlay(demo_insight: dict, building) -> dict:
         "use_type": building.use_name,
         "geometry": json.loads(building.geom.geojson),
     }
+    # radius_geometry는 요청 파라미터가 아니라 이 데모 응답 자체의 radius_m으로 만든다
+    # (radius_m과 radius_geometry가 항상 같은 반경을 가리켜야 한다).
+    buffers = building_radius_buffers(building.id, demo_insight["radius_m"])
+    overlay["radius_geometry"] = round_geojson_coordinates(buffers["buffer_4326"])
     return overlay

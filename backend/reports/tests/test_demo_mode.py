@@ -74,6 +74,7 @@ def test_demo_mode_post_returns_ready_immediately_without_dispatch(settings, mon
     assert report.model == "demo"
     assert report.payload["summary_3lines"][0].startswith("반경 500m 녹지율은 23.4%")
     assert "my" not in report.input_snapshot
+    assert "radius_geometry" not in report.input_snapshot
 
 
 def test_demo_mode_get_detail_shows_fixed_result(settings):

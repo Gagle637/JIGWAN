@@ -24,3 +24,14 @@ def building_radius_buffers(building_id: int, radius_m: int) -> dict:
         "buffer_4326": json.loads(buffer_4326),
         "buffer_32652": json.loads(buffer_32652),
     }
+
+
+def round_geojson_coordinates(geojson: dict, ndigits: int = 6) -> dict:
+    """GeoJSON 좌표를 소수 ndigits자리로 반올림한다(응답 전용 — 통계 계산에는 쓰지 않는다)."""
+
+    def _round(coords):
+        if isinstance(coords, (int, float)):
+            return round(coords, ndigits)
+        return [_round(c) for c in coords]
+
+    return {**geojson, "coordinates": _round(geojson["coordinates"])}

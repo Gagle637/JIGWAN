@@ -70,6 +70,7 @@ def test_post_creates_report_and_dispatches_task(monkeypatch):
     report = Report.objects.get(id=body["report_id"])
     assert report.template_version == "v1"
     assert "my" not in report.input_snapshot
+    assert "radius_geometry" not in report.input_snapshot
 
 
 def test_post_custom_requires_prompt():

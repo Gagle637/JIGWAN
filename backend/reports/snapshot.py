@@ -6,6 +6,7 @@ from buildings.insight import get_insight_cached
 
 def _strip_sensitive_sections(snapshot: dict) -> dict:
     snapshot.pop("my", None)
+    snapshot.pop("radius_geometry", None)
     if snapshot.get("building"):
         snapshot["building"].pop("geometry", None)
     if snapshot.get("change"):

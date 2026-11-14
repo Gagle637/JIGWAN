@@ -5,6 +5,7 @@ def test_build_report_input_strips_geometry_tiles_my(monkeypatch):
     fake_response = {
         "status": "ready",
         "building": {"id": 1, "geometry": {"type": "Polygon", "coordinates": []}, "name": "x"},
+        "radius_geometry": {"type": "Polygon", "coordinates": []},
         "change": {
             "total_area_m2": 10.0,
             "tiles": {"after": "...", "before": {}, "default_compare": None},
@@ -17,12 +18,14 @@ def test_build_report_input_strips_geometry_tiles_my(monkeypatch):
     result = snapshot.build_report_input(object(), 500)
 
     assert "my" not in result
+    assert "radius_geometry" not in result
     assert "geometry" not in result["building"]
     assert "tiles" not in result["change"]
     assert result["green"] == {"ratio_pct": 1.0}
     # 원본은 변형되지 않아야 한다(deepcopy)
     assert "geometry" in fake_response["building"]
     assert "tiles" in fake_response["change"]
+    assert "radius_geometry" in fake_response
 
 
 def test_build_report_input_handles_pending_status_without_change_section(monkeypatch):

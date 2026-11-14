@@ -93,6 +93,7 @@ INSIGHT_RESPONSE_SCHEMA = {
         "status",
         "building",
         "radius_m",
+        "radius_geometry",
         "as_of",
         "green",
         "change",
@@ -109,6 +110,11 @@ INSIGHT_RESPONSE_SCHEMA = {
             "required": ["id", "pnu", "name", "address", "use_type", "geometry"],
         },
         "radius_m": {"enum": [500, 1000]},
+        "radius_geometry": {
+            "type": "object",
+            "required": ["type", "coordinates"],
+            "properties": {"type": {"const": "Polygon"}},
+        },
         "as_of": {
             "type": "object",
             "required": [

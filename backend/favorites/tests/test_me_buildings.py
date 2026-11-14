@@ -41,20 +41,73 @@ def _authed_client(user):
     return client
 
 
-def test_only_favorited_buildings_returned():
+def test_without_folder_id_returns_favorited_and_memo_only_buildings():
     user = _make_user()
     favorited = _make_building(building_key="MBB2", gis_bldg_id="MBB2", pnu="3011010300101530061")
-    not_favorited = _make_building(
-        building_key="MBB3", gis_bldg_id="MBB3", pnu="3011010300101530062"
-    )
+    memo_only = _make_building(building_key="MBB3", gis_bldg_id="MBB3", pnu="3011010300101530062")
+    untouched = _make_building(building_key="MBBG", gis_bldg_id="MBBG", pnu="3011010300101530082")
     UserBuilding.objects.create(user=user, building=favorited, is_favorite=True)
-    UserBuilding.objects.create(user=user, building=not_favorited, is_favorite=False, memo="메모만")
+    UserBuilding.objects.create(user=user, building=memo_only, is_favorite=False, memo="메모만")
     client = _authed_client(user)
 
     response = client.get("/api/me/buildings")
     ids = {f["properties"]["building_id"] for f in response.json()["features"]}
 
-    assert ids == {favorited.id}
+    assert ids == {favorited.id, memo_only.id}
+    assert untouched.id not in ids
+
+
+def test_memo_only_building_has_no_color_and_is_not_favorite():
+    user = _make_user()
+    folder = FavoriteFolder.objects.create(user=user, name="색 있는 폴더", color="#1971c2")
+    memo_only = _make_building(building_key="MBBH", gis_bldg_id="MBBH", pnu="3011010300101483")
+    UserBuilding.objects.create(
+        user=user, building=memo_only, is_favorite=False, memo="메모만", folder=None
+    )
+    client = _authed_client(user)
+
+    response = client.get("/api/me/buildings")
+    feature = next(
+        f for f in response.json()["features"] if f["properties"]["building_id"] == memo_only.id
+    )
+
+    assert feature["properties"]["is_favorite"] is False
+    assert feature["properties"]["color"] is None
+    assert feature["properties"]["has_memo"] is True
+
+
+def test_color_only_building_keeps_its_own_color_without_inheriting_folder_color():
+    user = _make_user()
+    FavoriteFolder.objects.create(user=user, name="색 있는 폴더", color="#1971c2")
+    color_only = _make_building(building_key="MBBI", gis_bldg_id="MBBI", pnu="3011010300101484")
+    UserBuilding.objects.create(
+        user=user, building=color_only, is_favorite=False, color="#e03131"
+    )
+    client = _authed_client(user)
+
+    response = client.get("/api/me/buildings")
+    feature = next(
+        f for f in response.json()["features"] if f["properties"]["building_id"] == color_only.id
+    )
+
+    assert feature["properties"]["color"] == "#e03131"
+    assert feature["properties"]["is_favorite"] is False
+
+
+def test_folder_id_null_excludes_non_favorited_buildings():
+    user = _make_user()
+    favorited_unfiled = _make_building(
+        building_key="MBBJ", gis_bldg_id="MBBJ", pnu="3011010300101485"
+    )
+    memo_only = _make_building(building_key="MBBK", gis_bldg_id="MBBK", pnu="3011010300101486")
+    UserBuilding.objects.create(user=user, building=favorited_unfiled, is_favorite=True)
+    UserBuilding.objects.create(user=user, building=memo_only, is_favorite=False, memo="메모만")
+    client = _authed_client(user)
+
+    response = client.get("/api/me/buildings", {"folder_id": "null"})
+    ids = {f["properties"]["building_id"] for f in response.json()["features"]}
+
+    assert ids == {favorited_unfiled.id}
 
 
 def test_bbox_filters_buildings_outside_range():
@@ -143,3 +196,21 @@ def test_color_priority_building_over_folder_over_default():
     assert colors[with_own_color.id] == "#e03131"
     assert colors[inherits_folder_color.id] == "#1971c2"
     assert colors[no_folder_no_color.id] == DEFAULT_FAVORITE_COLOR
+
+
+def test_has_memo_reflects_whether_favorited_building_has_memo():
+    user = _make_user()
+    with_memo = _make_building(building_key="MBBE", gis_bldg_id="MBBE", pnu="3011010300101480")
+    without_memo = _make_building(building_key="MBBF", gis_bldg_id="MBBF", pnu="3011010300101481")
+    UserBuilding.objects.create(user=user, building=with_memo, is_favorite=True, memo="메모 있음")
+    UserBuilding.objects.create(user=user, building=without_memo, is_favorite=True)
+    client = _authed_client(user)
+
+    response = client.get("/api/me/buildings")
+    has_memo = {
+        f["properties"]["building_id"]: f["properties"]["has_memo"]
+        for f in response.json()["features"]
+    }
+
+    assert has_memo[with_memo.id] is True
+    assert has_memo[without_memo.id] is False

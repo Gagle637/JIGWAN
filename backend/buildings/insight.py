@@ -270,6 +270,7 @@ def _build_my_section(building, user):
         "is_favorite": mark.is_favorite if mark else False,
         "color": mark.color if mark else None,
         "label": mark.label if mark else None,
+        "memo": mark.memo if mark else None,
         "folder_id": mark.folder_id if mark else None,
         "report_count": report_count,
     }

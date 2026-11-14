@@ -39,6 +39,7 @@ def test_my_has_defaults_when_logged_in_but_not_marked():
         "is_favorite": False,
         "color": None,
         "label": None,
+        "memo": None,
         "folder_id": None,
         "report_count": 0,
     }
@@ -56,6 +57,7 @@ def test_my_reflects_existing_mark():
         folder=folder,
         color=PALETTE_COLORS[1],
         label="후보",
+        memo="다음 달에 임장 가보기",
     )
     client = APIClient()
     client.force_authenticate(user=user)
@@ -66,6 +68,7 @@ def test_my_reflects_existing_mark():
     assert my["is_favorite"] is True
     assert my["color"] == PALETTE_COLORS[1]
     assert my["label"] == "후보"
+    assert my["memo"] == "다음 달에 임장 가보기"
     assert my["folder_id"] == folder.id
 
 
@@ -74,7 +77,9 @@ def test_my_does_not_leak_between_different_users():
     building = _make_building(building_key="IMB4", gis_bldg_id="IMB4", pnu="3011010300101530053")
     user_a = _make_user(email="a@example.com")
     user_b = _make_user(email="b@example.com")
-    UserBuilding.objects.create(user=user_a, building=building, is_favorite=True, label="A만 표시")
+    UserBuilding.objects.create(
+        user=user_a, building=building, is_favorite=True, label="A만 표시", memo="A만의 메모"
+    )
 
     client_a = APIClient()
     client_a.force_authenticate(user=user_a)
@@ -86,6 +91,8 @@ def test_my_does_not_leak_between_different_users():
 
     assert response_a.json()["my"]["is_favorite"] is True
     assert response_b.json()["my"]["is_favorite"] is False
+    assert response_a.json()["my"]["memo"] == "A만의 메모"
+    assert response_b.json()["my"]["memo"] is None
     # my 제외 나머지(캐시로부터 옴)는 동일해야 한다
     a_body = response_a.json()
     b_body = response_b.json()

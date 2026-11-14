@@ -237,7 +237,11 @@ class FavoriteFolderBuildingsView(APIView):
 
 
 class MeBuildingsView(APIView):
-    """GET /api/me/buildings?bbox=&folder_id= — 내가 표시한 건물(spec 6-4, 10-4)."""
+    """GET /api/me/buildings?bbox=&folder_id= — 내가 표시한 건물(spec 6-4, 10-4).
+
+    folder_id가 없으면 즐겨찾기 여부와 무관하게 내가 색상·라벨·메모를 남긴 건물 전부를
+    돌려준다. folder_id가 있으면(미분류 folder_id=null 포함) 즐겨찾기 폴더 트리 개념이므로
+    즐겨찾기 건물만 돌려준다(2단계)."""
 
     permission_classes = [IsAuthenticated]
 
@@ -245,12 +249,11 @@ class MeBuildingsView(APIView):
         folders = list(FavoriteFolder.objects.filter(user=request.user))
         folders_by_id = {f.id: f for f in folders}
 
-        qs = UserBuilding.objects.filter(user=request.user, is_favorite=True).select_related(
-            "building"
-        )
+        qs = UserBuilding.objects.filter(user=request.user).select_related("building")
 
         folder_id_param = request.query_params.get("folder_id")
         if folder_id_param is not None:
+            qs = qs.filter(is_favorite=True)
             if folder_id_param == "null":
                 qs = qs.filter(folder_id=None)
             else:
@@ -276,9 +279,13 @@ class MeBuildingsView(APIView):
         for mark in qs:
             if tree_utils.is_hidden(mark.folder_id, folders_by_id):
                 continue
-            color = mark.color or tree_utils.nearest_color(
-                mark.folder_id, folders_by_id, DEFAULT_FAVORITE_COLOR
-            )
+            if mark.is_favorite:
+                color = mark.color or tree_utils.nearest_color(
+                    mark.folder_id, folders_by_id, DEFAULT_FAVORITE_COLOR
+                )
+            else:
+                # 즐겨찾기가 아닌 건물은 폴더 색·기본 즐겨찾기 색을 물려받지 않는다(2단계).
+                color = mark.color
             features.append(
                 {
                     "type": "Feature",
@@ -288,6 +295,7 @@ class MeBuildingsView(APIView):
                         "is_favorite": mark.is_favorite,
                         "color": color,
                         "label": mark.label,
+                        "has_memo": bool(mark.memo),
                         "folder_id": mark.folder_id,
                     },
                 }

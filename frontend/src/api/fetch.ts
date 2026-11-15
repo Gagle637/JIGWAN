@@ -1,12 +1,6 @@
-const defaultApiBase = 'http://localhost:8000';
-
-function apiBase(): string {
-  return import.meta.env.VITE_API_BASE ?? defaultApiBase;
-}
-
-export function resolveApiUrl(path: string): string {
-  if (!path || path.startsWith('http')) return path;
-  return `${apiBase()}${path}`;
+interface ApiErrorBody {
+  code?: string;
+  message?: string;
 }
 
 export class ApiError extends Error {
@@ -21,9 +15,17 @@ export class ApiError extends Error {
   }
 }
 
-interface ApiErrorBody {
-  code?: string;
-  message?: string;
+interface ApiFetchOptions {
+  method?: string;
+  json?: unknown;
+  params?: Record<string, string | number | boolean | undefined>;
+  signal?: AbortSignal;
+}
+
+const defaultApiBase = 'http://localhost:8000';
+
+function apiBase(): string {
+  return import.meta.env.VITE_API_BASE ?? defaultApiBase;
 }
 
 function parseErrorBody(text: string): ApiErrorBody | null {
@@ -55,11 +57,9 @@ function buildUrl(path: string, params?: ApiFetchOptions['params']): string {
   return queryString ? `${url}?${queryString}` : url;
 }
 
-export interface ApiFetchOptions {
-  method?: string;
-  json?: unknown;
-  params?: Record<string, string | number | boolean | undefined>;
-  signal?: AbortSignal;
+export function resolveApiUrl(path: string): string {
+  if (!path || path.startsWith('http')) return path;
+  return `${apiBase()}${path}`;
 }
 
 export async function apiFetch<T>(path: string, options: ApiFetchOptions = {}): Promise<T> {

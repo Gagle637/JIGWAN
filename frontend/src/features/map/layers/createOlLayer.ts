@@ -2,14 +2,14 @@ import type BaseLayer from 'ol/layer/Base';
 import type Style from 'ol/style/Style';
 
 import { resolveApiUrl } from '@/api/fetch';
+import type { MapLayer } from '@/types/layer';
 
-import type { MapLayer } from '../types';
 import { MvtLayer } from './MvtLayer';
 import { XyzLayer } from './XyzLayer';
 
-export type DrawableMapLayer = Extract<MapLayer, { source_type: 'raster_tile' | 'vector_tile' }>;
+type DrawableMapLayer = Extract<MapLayer, { source_type: 'raster_tile' | 'vector_tile' }>;
 
-export interface CreateOlLayerOptions {
+interface CreateOlLayerOptions {
   zIndex?: number;
   visibleFromZoom?: number | null;
   style?: Style;

@@ -5,7 +5,7 @@ import type Style from 'ol/style/Style';
 
 import { toOlMinZoom } from './minZoom';
 
-export interface MvtLayerOptions {
+interface MvtLayerOptions {
   url: string;
   attributions?: string;
   zIndex?: number;

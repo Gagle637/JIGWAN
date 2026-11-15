@@ -40,15 +40,14 @@ export default defineConfig([
       'import-x/order': [
         'error',
         {
-          groups: ['external', 'internal', ['parent', 'sibling'], 'index', 'object'],
+          groups: ['builtin', 'external', 'internal', ['parent', 'sibling', 'index']],
           pathGroups: [
             { pattern: 'react', group: 'external', position: 'before' },
-            { pattern: 'react-dom', group: 'external', position: 'before' },
-            { pattern: 'react-dom/**', group: 'external', position: 'before' },
+            { pattern: 'react-dom{,/**}', group: 'external', position: 'before' },
             { pattern: '@/**', group: 'internal' },
-            { pattern: '*.css', group: 'object', position: 'after' },
           ],
-          pathGroupsExcludedImportTypes: ['react'],
+          pathGroupsExcludedImportTypes: ['builtin'],
+          distinctGroup: false,
           'newlines-between': 'always',
           alphabetize: { order: 'asc', caseInsensitive: true },
         },

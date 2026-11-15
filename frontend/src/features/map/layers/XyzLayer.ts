@@ -1,7 +1,7 @@
 import TileLayer from 'ol/layer/Tile';
 import XYZ from 'ol/source/XYZ';
 
-export interface XyzLayerOptions {
+interface XyzLayerOptions {
   url: string;
   attributions?: string;
   zIndex?: number;

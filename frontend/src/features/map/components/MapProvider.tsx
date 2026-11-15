@@ -1,5 +1,4 @@
 import { useEffect, useRef, useState, type ReactNode } from 'react';
-
 import Attribution from 'ol/control/Attribution';
 import { defaults as defaultControls } from 'ol/control/defaults';
 import Map from 'ol/Map';

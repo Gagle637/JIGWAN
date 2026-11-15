@@ -1,8 +1,7 @@
 import { queryOptions, useQuery, type UseQueryResult } from '@tanstack/react-query';
 
 import { apiFetch } from '@/api/fetch';
-
-import type { MapLayer } from './types';
+import type { MapLayer } from '@/types/layer';
 
 export function layersQueryOptions() {
   return queryOptions({

@@ -2,7 +2,7 @@ import { isAboveMinZoom } from '@/features/map/layers/minZoom';
 import { layerSlugs } from '@/features/map/layerSlugs';
 import { useLayersQuery } from '@/features/map/queries';
 import { useMapViewStore } from '@/features/map/store';
-import type { MapLayer } from '@/features/map/types';
+import type { MapLayer } from '@/types/layer';
 
 function selectBuildingFootprint(layers: MapLayer[]) {
   return layers.find((layer) => layer.slug === layerSlugs.buildingFootprint);

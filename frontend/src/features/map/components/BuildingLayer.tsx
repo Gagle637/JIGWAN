@@ -5,8 +5,8 @@ import { buildingStyle } from '@/features/map/layers/mapStyle';
 import { buildingZIndex } from '@/features/map/layers/zIndex';
 import { layerSlugs } from '@/features/map/layerSlugs';
 import { useLayersQuery } from '@/features/map/queries';
-import type { MapLayer } from '@/features/map/types';
 import { useOlLayer } from '@/features/map/useOlLayer';
+import type { MapLayer } from '@/types/layer';
 
 function isBuildingFootprintLayer(
   layer: MapLayer,

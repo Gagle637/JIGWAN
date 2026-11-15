@@ -3,8 +3,8 @@ import { useMemo } from 'react';
 import { createOlLayer } from '@/features/map/layers/createOlLayer';
 import { backgroundZIndexBase } from '@/features/map/layers/zIndex';
 import { useLayersQuery } from '@/features/map/queries';
-import type { MapLayer } from '@/features/map/types';
 import { useOlLayer } from '@/features/map/useOlLayer';
+import type { MapLayer } from '@/types/layer';
 
 function isBackgroundRasterLayer(
   layer: MapLayer,

@@ -1,5 +1,4 @@
 import { useEffect } from 'react';
-
 import type BaseLayer from 'ol/layer/Base';
 
 import { useMapInstance } from './mapContext';

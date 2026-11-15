@@ -5,13 +5,15 @@ interface XyzLayerOptions {
   url: string;
   attributions?: string;
   zIndex?: number;
+  slug: string;
 }
 
 export class XyzLayer extends TileLayer {
-  constructor({ url, attributions, zIndex }: XyzLayerOptions) {
+  constructor({ url, attributions, zIndex, slug }: XyzLayerOptions) {
     super({
       source: new XYZ({ url, attributions }),
       zIndex,
+      properties: { slug },
     });
   }
 }

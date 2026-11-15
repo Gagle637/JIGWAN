@@ -11,10 +11,11 @@ interface MvtLayerOptions {
   zIndex?: number;
   visibleFromZoom?: number | null;
   style?: Style;
+  slug: string;
 }
 
 export class MvtLayer extends VectorTileLayer {
-  constructor({ url, attributions, zIndex, visibleFromZoom = null, style }: MvtLayerOptions) {
+  constructor({ url, attributions, zIndex, visibleFromZoom = null, style, slug }: MvtLayerOptions) {
     super({
       source: new VectorTileSource({
         format: new MVT(),
@@ -25,6 +26,7 @@ export class MvtLayer extends VectorTileLayer {
       style,
       zIndex,
       minZoom: toOlMinZoom(visibleFromZoom),
+      properties: { slug },
     });
   }
 }

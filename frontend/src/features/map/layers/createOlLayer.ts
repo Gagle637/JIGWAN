@@ -24,6 +24,7 @@ export function createOlLayer(def: DrawableMapLayer, options: CreateOlLayerOptio
         url: resolveApiUrl(def.source_params.url),
         attributions,
         zIndex: options.zIndex,
+        slug: def.slug,
       });
     case 'vector_tile':
       return new MvtLayer({
@@ -32,6 +33,7 @@ export function createOlLayer(def: DrawableMapLayer, options: CreateOlLayerOptio
         zIndex: options.zIndex,
         visibleFromZoom: options.visibleFromZoom,
         style: options.style,
+        slug: def.slug,
       });
     default: {
       const exhaustiveCheck: never = def;

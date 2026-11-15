@@ -5,9 +5,8 @@ import { defaults as defaultControls } from 'ol/control/defaults';
 import Map from 'ol/Map';
 import View from 'ol/View';
 
+import { mapContext } from '@/features/map/mapContext';
 import { useMapViewStore } from '@/features/map/store';
-
-import { mapContext } from './mapContext';
 
 import 'ol/ol.css';
 

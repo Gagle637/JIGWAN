@@ -1,14 +1,10 @@
-import { useEffect } from 'react';
+import { useMemo } from 'react';
 
-import TileLayer from 'ol/layer/Tile';
-import XYZ from 'ol/source/XYZ';
-
-import { toTileLayerOptions } from '@/features/map/layerSource';
+import { createOlLayer } from '@/features/map/layers/createOlLayer';
+import { backgroundZIndexBase } from '@/features/map/layers/zIndex';
 import { useLayersQuery } from '@/features/map/queries';
 import type { MapLayer } from '@/features/map/types';
-import { backgroundZIndexBase } from '@/features/map/zIndex';
-
-import { useMapInstance } from './mapContext';
+import { useOlLayer } from '@/features/map/useOlLayer';
 
 function isBackgroundRasterLayer(
   layer: MapLayer,
@@ -21,25 +17,16 @@ function selectBackgroundRasterLayers(layers: MapLayer[]) {
 }
 
 export function BackgroundLayer() {
-  const map = useMapInstance();
   const { data: layerDefs } = useLayersQuery(selectBackgroundRasterLayers);
 
-  useEffect(() => {
-    if (!map || !layerDefs) return;
+  const olLayers = useMemo(
+    () =>
+      layerDefs?.map((def) =>
+        createOlLayer(def, { zIndex: backgroundZIndexBase + def.order })) ?? null,
+    [layerDefs],
+  );
 
-    const olLayers = layerDefs.map((layerDef) => {
-      const options = toTileLayerOptions(layerDef);
-      return new TileLayer({
-        source: new XYZ({ url: options.url, attributions: options.attributions ?? undefined }),
-        zIndex: backgroundZIndexBase + layerDef.order,
-      });
-    });
-
-    olLayers.forEach((layer) => map.addLayer(layer));
-    return () => {
-      olLayers.forEach((layer) => map.removeLayer(layer));
-    };
-  }, [map, layerDefs]);
+  useOlLayer(olLayers);
 
   return null;
 }

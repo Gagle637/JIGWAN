@@ -3,6 +3,13 @@ interface ApiErrorBody {
   message?: string;
 }
 
+interface ApiFetchOptions {
+  method?: string;
+  json?: unknown;
+  params?: Record<string, string | number | boolean | undefined>;
+  signal?: AbortSignal;
+}
+
 export class ApiError extends Error {
   code: string;
   status: number;
@@ -13,13 +20,6 @@ export class ApiError extends Error {
     this.code = code;
     this.status = status;
   }
-}
-
-interface ApiFetchOptions {
-  method?: string;
-  json?: unknown;
-  params?: Record<string, string | number | boolean | undefined>;
-  signal?: AbortSignal;
 }
 
 const defaultApiBase = 'http://localhost:8000';
